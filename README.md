@@ -453,3 +453,16 @@ def export_report(report_id):
 
 This approach keeps authorization rules close to the functions they protect
 and avoids repeating manual role checks throughout the application.
+
+## Next Steps
+
+Planned improvements for future releases:
+
+- **Session timeout / idle auto-logout**  
+  Automatically log the user out after a period of inactivity (e.g. 10 minutes).  
+  This will improve security on shared or unattended workstations.
+
+- **User activity logs in the User Manager**  
+  Record and display important user actions (login, logout, password changes,  
+  role updates, account creation/deletion) inside the User Manager page so  
+  Superadmins can audit account activity.
