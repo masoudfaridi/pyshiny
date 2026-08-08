@@ -224,37 +224,17 @@ A higher role automatically inherits all permissions from lower roles.
 
 ## Security Notes
 
-The authentication and RBAC implementation includes the following protections:
+The authentication system includes several security protections:
 
-1. **Stale-session authorization in three UI renderers.** `users_table()`,
-   `edit_expiry_field()`, and `edit_expiry_date_input()` read the cached
-   `logged_in_user()` reactive value directly to decide whether to render
-   superadmin-only content. If a superadmin was demoted or deactivated from
-   *another* session, their own already-open tab could keep showing the full
-   user table (usernames, roles, timestamps) until some unrelated input
-   happened to trigger a session refresh. All three now call the same
-   `_ensure_valid_session()` helper the mutating handlers already used, so
-   they re-check the role against SQLite on every render.
-2. **PBKDF2 iteration count raised from 310,000 to 600,000** to match current
-   OWASP guidance for PBKDF2-HMAC-SHA256. The iteration count is stored
-   inside each password hash string, so this is fully backward compatible
-   with accounts created under the old count.
-3. **The live `db/auth.db` file is no longer shipped in the project
-   archive.** Committing/zipping a pre-seeded database means every copy of
-   the project carries the same four password hashes at rest indefinitely.
-   `auth/core.py` already creates and seeds `db/auth.db` automatically on
-   first run, so nothing needs to be done manually — just don't commit the
-   generated file (see `.gitignore`).
+- Session authorization is revalidated against SQLite before protected actions.
+- Passwords are hashed with PBKDF2-HMAC-SHA256 and per-password salts.
+- Login attempts are rate-limited after repeated failures.
+- The SQLite database is generated automatically on first run and `db/auth.db`
+  should never be committed to the repository.
+- Change all default passwords before using the application in a real environment.
 
-Residual items worth knowing about (not code bugs, but deployment
-considerations if this ever leaves a classroom/demo setting):
-
-- Login rate-limiting is stored in-process and resets on app restart; a
-  multi-process deployment would need a shared store (e.g. Redis) instead.
-- Shiny itself doesn't set `X-Frame-Options` / CSP headers; put a reverse
-  proxy (nginx, Caddy) in front in production and set those there.
-- The four default accounts use well-known passwords by design (they're
-  documented below) — rotate all of them before any real deployment.
+For production deployment, additional infrastructure-level protections such as
+shared rate limiting and security headers may be required.
 
 ## Security controls
 
@@ -262,36 +242,20 @@ The login form includes an **offline image CAPTCHA** (no external network servic
 
 Additional protections:
 
-- PBKDF2-HMAC-SHA256 password hashing with per-password salt
 - Constant-time hash comparison and a dummy verify path for unknown users
-- Login rate limiting (temporary lockout after repeated failures)
-- Session re-validation against SQLite before protected actions
 - Username format limits and password length limits
 - Stronger password rules for self-service password changes
   (Superadmin may still assign simpler passwords when creating/editing users)
 
 ## Account Expiration
 
-Superadmin accounts never expire.
+Superadmin accounts never expire. Admin, User, and Guest accounts can optionally
+have an expiration date. The expiration date is inclusive, so the account remains
+usable through the specified date and becomes unavailable starting the following day.
 
-Admin, User, and Guest accounts can optionally have an expiration date.
-On the User Management page, enable the "Set an expiration date" checkbox to
-assign a date; leave the checkbox unchecked for accounts that should never expire.
+Expired accounts cannot log in, and protected backend functions also reject expired
+sessions.
 
-The expiration date is inclusive, meaning the account remains usable on the
-specified date and becomes unavailable starting the following day.
-
-For example, an expiration date of `2026-12-31` allows access through December
-31, 2026. The account is rejected beginning January 1, 2027.
-
-Expired accounts cannot log in and protected backend functions also reject an
-expired session.
-
-## Password confirmation
-
-When creating a user, editing a user password, or changing your own password,
-the new password must be entered twice. The two values must match before the
-change is accepted.
 
 ## Default Accounts
 
@@ -313,19 +277,10 @@ Change the default passwords before using the application in a real environment.
 ## Self-Service Password Change
 
 Every authenticated user can change their own password from the `My Account`
-page.
+page. The current password must be verified, and the new password must be entered
+twice and contain at least 8 characters.
 
-The user must provide:
-
-- Current password
-- New password
-- Confirm new password
-
-The backend verifies the current password and checks that the two new password values match before storing the new password.
-New passwords must contain at least 8 characters.
-
-This functionality is protected by `@guest`, which means every authenticated
-role can use it, including Guest users.
+This functionality is available to every authenticated role, including Guest users.
 
 ## RBAC Decorators
 
