@@ -9,48 +9,93 @@ hierarchical RBAC decorators.
 
 ```text
 adminlte-shiny-dashboard/
-├── app.py                 # Main Shiny application and navigation shell
-├── requirements.txt       # Python dependencies
+├── 01_requirements/           # Step 1 – auto-update requirements.txt
+│   └── update_requirements.py # Scans all .py files and refreshes dependencies
+├── app.py                     # Main Shiny application and navigation shell
+├── requirements.txt           # Python dependencies (auto-maintained)
 ├── auth/
-│   ├── __init__.py        # Public auth API re-exports
-│   ├── core.py            # Authentication, password hashing, expiration, RBAC
-│   └── captcha.py         # Offline image CAPTCHA generator
+│   ├── __init__.py            # Public auth API re-exports
+│   ├── core.py                # Authentication, password hashing, expiration, RBAC
+│   └── captcha.py             # Offline image CAPTCHA generator
 ├── db/
-│   └── auth.db            # SQLite database containing user accounts
-│                          #   (created automatically on first run; not
-│                          #   shipped in the repo/zip, see .gitignore)
+│   └── auth.db                # SQLite database containing user accounts
+│                              #   (created automatically on first run; not
+│                              #   shipped in the repo/zip, see .gitignore)
 ├── docker/
-│   ├── Dockerfile          # Image build (Python 3.12-slim + deps)
-│   ├── entrypoint.sh       # Starts Shiny on 0.0.0.0:$PORT
-│   ├── docker-compose.yml  # One-command build + run, port via $PORT
-│   ├── .env.example        # Copy to .env to set a default PORT
-│   ├── run.sh              # One-command build + run without compose
-│   └── README.md           # Docker quick reference
+│   ├── Dockerfile             # Image build (Python 3.12-slim + deps)
+│   ├── entrypoint.sh          # Starts Shiny on 0.0.0.0:$PORT
+│   ├── docker-compose.yml     # One-command build + run, port via $PORT
+│   ├── .env.example           # Copy to .env to set a default PORT
+│   ├── run.sh                 # One-command build + run without compose
+│   └── README.md              # Docker quick reference
 ├── static/
 │   ├── css/
-│   │   └── styles.css     # Dashboard, authentication, and theme styles
+│   │   └── styles.css         # Dashboard, authentication, and theme styles
 │   └── js/
-│       └── custom.js      # Sidebar, theme picker, login Enter, user actions
+│       └── custom.js          # Sidebar, theme picker, login Enter, user actions
 └── tabs/
-    ├── tab_01.py          # Dashboard v1 (Superadmin)
-    ├── tab_02.py          # Dashboard v2 (Admin+)
-    ├── tab_03.py          # Dashboard v3 (User+)
-    ├── tab_04.py          # Components (Guest+)
-    ├── tab_05.py          # Widgets
-    ├── tab_06.py          # Tables
-    ├── tab_account.py     # Self-service account and password management
-    └── tab_users.py       # Superadmin-only user management
+    ├── tab_01.py              # Dashboard v1 (Superadmin)
+    ├── tab_02.py              # Dashboard v2 (Admin+)
+    ├── tab_03.py              # Dashboard v3 (User+)
+    ├── tab_04.py              # Components (Guest+)
+    ├── tab_05.py              # Widgets
+    ├── tab_06.py              # Tables
+    ├── tab_account.py         # Self-service account and password management
+    └── tab_users.py           # Superadmin-only user management
 ```
 
 ## Installation
 
-Install the required packages:
+Follow these steps in order.
+
+### Step 1 – Refresh requirements.txt (recommended)
+
+The project ships a small utility that keeps `requirements.txt` in sync with
+the actual import statements found in every Python file.
+
+```bash
+python 01_requirements/update_requirements.py
+```
+
+What the script does:
+
+- Walks the whole project tree and parses every `.py` file with the AST.
+- Detects both `import package` and `from package import ...` statements.
+- Maps import names to the correct PyPI package (e.g. `PIL` → `Pillow`).
+- Skips the Python standard library and local packages (`auth`, `tabs`, …).
+- Never creates duplicate entries.
+- Preserves any version pins that are already present.
+- Adds newly discovered third-party packages with sensible minimum versions.
+
+Dry-run mode (show changes without writing the file):
+
+```bash
+python 01_requirements/update_requirements.py --dry-run
+```
+
+After the script finishes, `requirements.txt` typically looks like:
+
+```text
+shiny>=1.4
+Pillow>=10.0
+matplotlib>=3.7
+numpy>=1.24
+```
+
+### Step 2 – Install the packages
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Dependencies: `shiny` and `Pillow` (for offline CAPTCHA images).
+Current core dependencies:
+
+| Package      | Purpose                              |
+|--------------|--------------------------------------|
+| shiny        | Web application framework            |
+| Pillow       | Offline CAPTCHA image generation     |
+| numpy        | Numerical arrays used by the charts  |
+| matplotlib   | Histogram and plot rendering         |
 
 ## Run the Application
 
