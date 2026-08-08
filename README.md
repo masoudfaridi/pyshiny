@@ -5,6 +5,14 @@ The project includes role-based authentication, SQLite user storage, optional
 account expiration, self-service password changes, 12 selectable themes, and
 hierarchical RBAC decorators.
 
+<p align="center">
+  <img src="docs/01.jpg" alt="Dashboard" width="400">
+</p>
+
+<p align="center">
+  <img src="docs/02.gif" alt="Theme switching" width="800">
+</p>
+
 ## Project Structure
 
 ```text
