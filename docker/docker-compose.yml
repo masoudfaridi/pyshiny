@@ -18,8 +18,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: adminlte-shiny-dashboard:latest
-    container_name: adminlte-shiny-dashboard
+    image: pyshiny:latest
+    container_name: pyshiny
     environment:
       PORT: "${PORT:-8000}"
     ports:

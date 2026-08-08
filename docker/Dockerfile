@@ -5,11 +5,11 @@
 # (context: ..) and docker/run.sh, which both invoke `docker build`
 # correctly. If you build manually, do it from the project root:
 #
-#   docker build -f docker/Dockerfile -t adminlte-shiny-dashboard .
+#   docker build -f docker/Dockerfile -t pyshiny .
 #
 FROM python:3.12-slim
 
-LABEL org.opencontainers.image.title="adminlte-shiny-dashboard" \
+LABEL org.opencontainers.image.title="pyshiny" \
       org.opencontainers.image.description="Shiny for Python AdminLTE-style dashboard with SQLite-backed RBAC auth"
 
 # System packages:

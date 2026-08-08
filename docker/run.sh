@@ -12,8 +12,8 @@
 set -euo pipefail
 
 PORT="${1:-8000}"
-IMAGE_NAME="adminlte-shiny-dashboard"
-CONTAINER_NAME="adminlte-shiny-dashboard"
+IMAGE_NAME="pyshiny"
+CONTAINER_NAME="pyshiny"
 
 # Resolve the project root (parent of this script's directory) regardless
 # of where the script is called from, so `docker build` gets the right

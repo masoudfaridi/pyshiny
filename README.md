@@ -1,9 +1,8 @@
 # Python Shiny Dashboard
 
-A Shiny for Python dashboard scaffold inspired by the AdminLTE layout.
-The project includes role-based authentication, SQLite user storage, optional
-account expiration, self-service password changes, 12 selectable themes, and
-hierarchical RBAC decorators.
+A customizable Shiny for Python dashboard featuring role-based authentication,
+ SQLite user storage, optional account expiration, self-service password changes,
+  12 selectable themes, and hierarchical RBAC decorators.
 
 <p align="center">
   <img src="docs/01.jpg" alt="Dashboard" width="400">
@@ -16,7 +15,7 @@ hierarchical RBAC decorators.
 ## Project Structure
 
 ```text
-adminlte-shiny-dashboard/
+pyshiny/
 ├── 00_create_files/           # Step 0 – prepare runtime environment
 │   └── bootstrap.py           # Creates db/, cleans auth.db, makes docker/.env
 ├── 01_requirements/           # Step 1 – auto-update requirements.txt
@@ -198,8 +197,8 @@ bash docker/run.sh 9000     # port 9000
 ### Useful commands
 
 ```bash
-docker logs -f adminlte-shiny-dashboard      # follow logs
-docker stop adminlte-shiny-dashboard         # stop (run.sh-started container)
+docker logs -f pyshiny      # follow logs
+docker stop pyshiny         # stop (run.sh-started container)
 docker compose down                          # stop (compose-started container)
 docker compose up --build -d                 # rebuild after code changes
 ```
