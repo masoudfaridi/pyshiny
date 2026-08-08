@@ -1,4 +1,4 @@
-# AdminLTE Shiny Dashboard
+# Python Shiny Dashboard
 
 A Shiny for Python dashboard scaffold inspired by the AdminLTE layout.
 The project includes role-based authentication, SQLite user storage, optional
