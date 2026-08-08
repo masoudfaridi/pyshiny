@@ -373,6 +373,12 @@ def server(input, output, session):
         logged_in_user.set(user)
         _issue_captcha()
 
+        ##################
+        tab_01.server(input, output, session)
+        tab_02.server(input, output, session)
+        tab_03.server(input, output, session)
+        tab_04.server(input, output, session)
+
     @render.ui
     def login_message():
         message = login_error()
