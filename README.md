@@ -4,6 +4,9 @@ A customizable Shiny for Python dashboard featuring role-based authentication,
  SQLite user storage, optional account expiration, self-service password changes,
   12 selectable themes, and hierarchical RBAC decorators.
 
+
+**🔗 Live Demo:** [https://masoudfaridi.shinyapps.io/pyshiny/](https://masoudfaridi.shinyapps.io/pyshiny/)
+
 <p align="center">
   <img src="docs/01.jpg" alt="Dashboard" width="400">
 </p>

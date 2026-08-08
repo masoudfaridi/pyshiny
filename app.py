@@ -204,6 +204,15 @@ def dashboard_ui(role: str) -> ui.Tag:
                 class_="brand",
             ),
             ui.tags.div(
+                ui.tags.i(class_="bi bi-hexagon-fill"),
+                ui.tags.a(
+                    ui.tags.span("github: https://github.com/masoudfaridi/pyshiny", class_="brand-text"),
+                    href="https://github.com/masoudfaridi/pyshiny",
+                    target="_blank",
+                ),
+                class_="brand",
+            ),
+            ui.tags.div(
                 ui.tags.span(f"{current_role().title()}", class_="role-badge"),
                 ui.tags.span(current_user()["username"], class_="username-badge"),
                 ui.input_action_button(
