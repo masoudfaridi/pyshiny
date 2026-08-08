@@ -1,0 +1,8 @@
+# SQLite database -- generated automatically on first run by auth/core.py.
+# Never ship a pre-seeded db file: it can carry stale password hashes and
+# lets the four default accounts sit around indefinitely if a copy leaks.
+db/auth.db
+
+__pycache__/
+*.pyc
+.venv/
