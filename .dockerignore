@@ -1,0 +1,18 @@
+# Keep the build context sent to the Docker daemon small and predictable.
+# NOTE: this must stay at the project root (same level as app.py) -- Docker
+# always looks for .dockerignore next to the build context root, not next
+# to the Dockerfile, regardless of where docker/Dockerfile lives.
+
+.git
+.gitignore
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Never bake a pre-seeded database into the image -- db/ is mounted as a
+# volume at runtime instead (see docker/docker-compose.yml, docker/run.sh),
+# and auth/core.py creates + seeds it automatically on first start.
+db/
+
+*.zip

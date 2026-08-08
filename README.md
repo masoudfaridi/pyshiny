@@ -17,6 +17,15 @@ adminlte-shiny-dashboard/
 │   └── captcha.py         # Offline image CAPTCHA generator
 ├── db/
 │   └── auth.db            # SQLite database containing user accounts
+│                          #   (created automatically on first run; not
+│                          #   shipped in the repo/zip, see .gitignore)
+├── docker/
+│   ├── Dockerfile          # Image build (Python 3.12-slim + deps)
+│   ├── entrypoint.sh       # Starts Shiny on 0.0.0.0:$PORT
+│   ├── docker-compose.yml  # One-command build + run, port via $PORT
+│   ├── .env.example        # Copy to .env to set a default PORT
+│   ├── run.sh              # One-command build + run without compose
+│   └── README.md           # Docker quick reference
 ├── static/
 │   ├── css/
 │   │   └── styles.css     # Dashboard, authentication, and theme styles
@@ -57,6 +66,81 @@ Then open the address printed by the terminal, usually:
 ```text
 http://127.0.0.1:8000
 ```
+
+## Docker
+
+The whole project can be built and run in a container with one command --
+no local Python install needed. Everything lives in the `docker/` folder.
+
+### Quickest path: docker compose
+
+```bash
+cd docker
+docker compose up --build -d
+```
+
+That builds the image and starts the dashboard on **port 8000**:
+
+```text
+http://localhost:8000
+```
+
+Want a different port? Set `PORT` -- nothing else to edit, host and
+container both pick it up automatically:
+
+```bash
+PORT=9000 docker compose up --build -d
+# -> http://localhost:9000
+```
+
+(Or copy `docker/.env.example` to `docker/.env` and set `PORT` there once,
+then just run `docker compose up --build -d` every time.)
+
+Stop it with:
+
+```bash
+docker compose down
+```
+
+### Alternative: plain `docker`, no compose
+
+If you don't have `docker compose`, run this from the project root instead
+-- it builds and starts the container in one step:
+
+```bash
+bash docker/run.sh          # port 8000
+bash docker/run.sh 9000     # port 9000
+```
+
+### What the image does
+
+- Base image: `python:3.12-slim`, with `fonts-dejavu-core` installed so the
+  login CAPTCHA renders with a real TrueType font instead of Pillow's tiny
+  fallback bitmap font.
+- Runs as a non-root user (`appuser`) inside the container.
+- `db/` (the SQLite file with all accounts) is mounted as a volume from the
+  project root, **not** baked into the image. `auth/core.py` creates and
+  seeds it automatically the first time the container starts, and it then
+  persists across restarts, rebuilds, and `docker compose down` / `up`.
+- A `HEALTHCHECK` pings the dashboard every 30s so `docker ps` and
+  orchestrators (Swarm, Kubernetes, etc.) can tell if it's actually serving
+  requests, not just that the process is alive.
+- The internal port is controlled by a single `PORT` environment variable
+  (default `8000`), read by `docker/entrypoint.sh` at startup. Both
+  `docker/run.sh` and `docker/docker-compose.yml` publish the host port and
+  set this env var together from one value, so you only ever specify the
+  port once, in one place.
+
+### Useful commands
+
+```bash
+docker logs -f adminlte-shiny-dashboard      # follow logs
+docker stop adminlte-shiny-dashboard         # stop (run.sh-started container)
+docker compose down                          # stop (compose-started container)
+docker compose up --build -d                 # rebuild after code changes
+```
+
+See `docker/README.md` for a short reference to every file in that folder.
 
 ## Authentication
 

@@ -1,0 +1,32 @@
+# One-command build + run:
+#
+#   cd docker
+#   docker compose up --build -d
+#
+# Custom port (host and container both use it -- no file editing needed):
+#
+#   PORT=9000 docker compose up --build -d
+#
+# Or put PORT=9000 in a .env file next to this one (copy .env.example).
+#
+# Stop it with:
+#
+#   docker compose down
+#
+services:
+  dashboard:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: adminlte-shiny-dashboard:latest
+    container_name: adminlte-shiny-dashboard
+    environment:
+      PORT: "${PORT:-8000}"
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    volumes:
+      # Persists db/auth.db (accounts, roles, password hashes) across
+      # restarts and rebuilds. auth/core.py creates and seeds it
+      # automatically the first time the container starts.
+      - ../db:/app/db
+    restart: unless-stopped
