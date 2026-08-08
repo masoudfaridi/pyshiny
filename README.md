@@ -9,6 +9,8 @@ hierarchical RBAC decorators.
 
 ```text
 adminlte-shiny-dashboard/
+├── 00_create_files/           # Step 0 – prepare runtime environment
+│   └── bootstrap.py           # Creates db/, cleans auth.db, makes docker/.env
 ├── 01_requirements/           # Step 1 – auto-update requirements.txt
 │   └── update_requirements.py # Scans all .py files and refreshes dependencies
 ├── app.py                     # Main Shiny application and navigation shell
@@ -17,10 +19,8 @@ adminlte-shiny-dashboard/
 │   ├── __init__.py            # Public auth API re-exports
 │   ├── core.py                # Authentication, password hashing, expiration, RBAC
 │   └── captcha.py             # Offline image CAPTCHA generator
-├── db/
-│   └── auth.db                # SQLite database containing user accounts
-│                              #   (created automatically on first run; not
-│                              #   shipped in the repo/zip, see .gitignore)
+├── db/                        # SQLite database (created on first run)
+│                              #   auth.db is NEVER shipped – see .gitignore
 ├── docker/
 │   ├── Dockerfile             # Image build (Python 3.12-slim + deps)
 │   ├── entrypoint.sh          # Starts Shiny on 0.0.0.0:$PORT
@@ -46,12 +46,24 @@ adminlte-shiny-dashboard/
 
 ## Installation
 
-Follow these steps in order.
+Follow these steps in order after extracting the archive.
 
-### Step 1 – Refresh requirements.txt (recommended)
+### Step 0 – Prepare the runtime environment
 
-The project ships a small utility that keeps `requirements.txt` in sync with
-the actual import statements found in every Python file.
+```bash
+python 00_create_files/bootstrap.py
+```
+
+This script:
+
+- Creates the `db/` directory if it does not exist.
+- Removes any leftover `db/auth.db` (the database must be generated on first
+  run by `auth.core.init_db()`, never shipped).
+- Creates `docker/.env` from `docker/.env.example` when missing.
+- Performs basic sanity checks on the project layout.
+- Prints the next commands you should run.
+
+### Step 1 – Refresh requirements.txt
 
 ```bash
 python 01_requirements/update_requirements.py
