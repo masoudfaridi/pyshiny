@@ -52,7 +52,6 @@ pip install -r requirements.txt
 
 Dependencies: `shiny` and `Pillow` (for offline CAPTCHA images).
 
-
 ## Run the Application
 
 Start the Shiny application with:
@@ -159,9 +158,9 @@ Guest
 
 A higher role automatically inherits all permissions from lower roles.
 
-## Security audit notes (this build)
+## Security Notes
 
-A review of the authentication/RBAC layer found and fixed three issues:
+The authentication and RBAC implementation includes the following protections:
 
 1. **Stale-session authorization in three UI renderers.** `users_table()`,
    `edit_expiry_field()`, and `edit_expiry_date_input()` read the cached
@@ -256,8 +255,9 @@ The user must provide:
 
 - Current password
 - New password
+- Confirm new password
 
-The backend verifies the current password before storing the new password.
+The backend verifies the current password and checks that the two new password values match before storing the new password.
 New passwords must contain at least 8 characters.
 
 This functionality is protected by `@guest`, which means every authenticated
@@ -434,8 +434,3 @@ def export_report(report_id):
 
 This approach keeps authorization rules close to the functions they protect
 and avoids repeating manual role checks throughout the application.
-
-## Code Documentation
-
-The Python, JavaScript, CSS, and project documentation use English comments,
-docstrings, labels, and messages.
