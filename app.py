@@ -1,5 +1,5 @@
 """
-AdminLTE-style dashboard scaffold, built with Shiny for Python.
+Python Shiny Dashboard, built with Shiny for Python.
 =================================================================
 
 Folder structure
@@ -200,7 +200,7 @@ def dashboard_ui(role: str) -> ui.Tag:
         ui.tags.header(
             ui.tags.div(
                 ui.tags.i(class_="bi bi-hexagon-fill"),
-                ui.tags.span("AdminLTE 4", class_="brand-text"),
+                ui.tags.span("Python Shiny Dashboard", class_="brand-text"),
                 class_="brand",
             ),
             ui.tags.div(
