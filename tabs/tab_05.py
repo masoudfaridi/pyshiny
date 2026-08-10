@@ -1,26 +1,62 @@
-"""Widgets tab module."""
+"""Widgets placeholder page."""
 
 from shiny import ui
 
-# Unique identifier used to map sidebar navigation to this module.
 NAV_ID = "tab_05"
-# Human-readable label displayed in the sidebar.
 NAV_LABEL = "Widgets"
-# Icon shown for this top-level sidebar item.
-NAV_ICON = "bi-boxes"
-# None means this item is displayed outside a collapsible group.
+NAV_ICON = "bi-sliders"
 NAV_GROUP = None
-# This page is available to every authenticated role.
 NAV_MIN_ROLE = "guest"
 
+
 def panel():
-    """Return the user interface for the Widgets page."""
-    # This page is intended for dashboard cards, charts, and small widgets.
+    """Simple Bootstrap grid demo for widgets."""
     return ui.div(
         ui.h3("Widgets"),
-        ui.p(
-            "This is a placeholder for dashboard widgets. "
-            "Add KPI cards, charts, status indicators, and other reusable widgets here."
+        ui.p("Example layout using Bootstrap rows and columns (12-column grid)."),
+        ui.row(
+            ui.column(
+                4,
+                ui.div(
+                    ui.h5("Column 4"),
+                    ui.p("One-third width. Place filters or controls here."),
+                    class_="user-form-card",
+                ),
+            ),
+            ui.column(
+                4,
+                ui.div(
+                    ui.h5("Column 4"),
+                    ui.p("One-third width. Place summary cards here."),
+                    class_="user-form-card",
+                ),
+            ),
+            ui.column(
+                4,
+                ui.div(
+                    ui.h5("Column 4"),
+                    ui.p("One-third width. Place actions or status here."),
+                    class_="user-form-card",
+                ),
+            ),
+        ),
+        ui.row(
+            ui.column(
+                8,
+                ui.div(
+                    ui.h5("Column 8"),
+                    ui.p("Main content area (two-thirds). Charts or tables go here."),
+                    class_="user-form-card mt-3",
+                ),
+            ),
+            ui.column(
+                4,
+                ui.div(
+                    ui.h5("Column 4"),
+                    ui.p("Side panel (one-third)."),
+                    class_="user-form-card mt-3",
+                ),
+            ),
         ),
         class_="tab-pane-content",
     )

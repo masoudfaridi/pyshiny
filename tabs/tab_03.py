@@ -14,40 +14,50 @@ NAV_MIN_ROLE = "user"
 
 
 def panel():
-    """UI: trials m, success probability p, sample size → generate → histogram."""
+    """UI: trials m, success probability p, sample size → generate → histogram (Bootstrap grid)."""
     return ui.div(
         ui.h3("Binomial distribution"),
         ui.p(
             "Choose the number of trials (m) and success probability (p), set the "
             "sample size, then generate random draws and view the histogram."
         ),
-        ui.div(
-            ui.input_numeric(
-                "bin_m", "Trials (m)", value=20, min=1, max=10_000, step=1
+        ui.row(
+            ui.column(
+                4,
+                ui.div(
+                    ui.input_numeric(
+                        "bin_m", "Trials (m)", value=20, min=1, max=10_000, step=1
+                    ),
+                    ui.input_numeric(
+                        "bin_p",
+                        "Success probability (p)",
+                        value=0.3,
+                        min=0.0,
+                        max=1.0,
+                        step=0.01,
+                    ),
+                    ui.input_numeric(
+                        "bin_n",
+                        "Sample size (n)",
+                        value=500,
+                        min=2,
+                        max=50_000,
+                        step=10,
+                    ),
+                    ui.input_action_button(
+                        "bin_generate",
+                        "Generate sample",
+                        class_="btn btn-primary mt-2 w-100",
+                    ),
+                    class_="user-form-card",
+                ),
+                ui.output_ui("bin_summary"),
             ),
-            ui.input_numeric(
-                "bin_p",
-                "Success probability (p)",
-                value=0.3,
-                min=0.0,
-                max=1.0,
-                step=0.01,
+            ui.column(
+                8,
+                ui.output_plot("bin_hist", height="360px"),
             ),
-            ui.input_numeric(
-                "bin_n",
-                "Sample size (n)",
-                value=500,
-                min=2,
-                max=50_000,
-                step=10,
-            ),
-            ui.input_action_button(
-                "bin_generate", "Generate sample", class_="btn btn-primary mt-2"
-            ),
-            class_="user-form-card",
         ),
-        ui.output_ui("bin_summary"),
-        ui.output_plot("bin_hist", height="360px"),
         class_="tab-pane-content",
     )
 

@@ -14,32 +14,42 @@ NAV_MIN_ROLE = "admin"
 
 
 def panel():
-    """UI: rate λ, sample size → generate → histogram."""
+    """UI: rate λ, sample size → generate → histogram (Bootstrap grid)."""
     return ui.div(
         ui.h3("Poisson distribution"),
         ui.p(
             "Choose the rate parameter λ (mean number of events), set the sample size, "
             "then generate random draws and view the histogram."
         ),
-        ui.div(
-            ui.input_numeric(
-                "pois_lambda", "Rate (λ)", value=4.0, min=1e-6, step=0.1
+        ui.row(
+            ui.column(
+                4,
+                ui.div(
+                    ui.input_numeric(
+                        "pois_lambda", "Rate (λ)", value=4.0, min=1e-6, step=0.1
+                    ),
+                    ui.input_numeric(
+                        "pois_n",
+                        "Sample size (n)",
+                        value=500,
+                        min=2,
+                        max=50_000,
+                        step=10,
+                    ),
+                    ui.input_action_button(
+                        "pois_generate",
+                        "Generate sample",
+                        class_="btn btn-primary mt-2 w-100",
+                    ),
+                    class_="user-form-card",
+                ),
+                ui.output_ui("pois_summary"),
             ),
-            ui.input_numeric(
-                "pois_n",
-                "Sample size (n)",
-                value=500,
-                min=2,
-                max=50_000,
-                step=10,
+            ui.column(
+                8,
+                ui.output_plot("pois_hist", height="360px"),
             ),
-            ui.input_action_button(
-                "pois_generate", "Generate sample", class_="btn btn-primary mt-2"
-            ),
-            class_="user-form-card",
         ),
-        ui.output_ui("pois_summary"),
-        ui.output_plot("pois_hist", height="360px"),
         class_="tab-pane-content",
     )
 

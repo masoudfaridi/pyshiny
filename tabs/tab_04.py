@@ -14,7 +14,7 @@ NAV_MIN_ROLE = "guest"
 
 
 def panel():
-    """UI: successes r, probability p, sample size → generate → histogram.
+    """UI: successes r, probability p, sample size → generate → histogram (Bootstrap grid).
 
     Parameterization: number of failures before r successes (NumPy default).
     """
@@ -25,36 +25,45 @@ def panel():
             "Each draw is the number of failures before r successes. "
             "Set the sample size, generate draws, and view the histogram."
         ),
-        ui.div(
-            ui.input_numeric(
-                "nb_r", "Successes (r)", value=5, min=1, max=10_000, step=1
+        ui.row(
+            ui.column(
+                4,
+                ui.div(
+                    ui.input_numeric(
+                        "nb_r", "Successes (r)", value=5, min=1, max=10_000, step=1
+                    ),
+                    ui.input_numeric(
+                        "nb_p",
+                        "Success probability (p)",
+                        value=0.4,
+                        min=1e-6,
+                        max=1.0,
+                        step=0.01,
+                    ),
+                    ui.input_numeric(
+                        "nb_n",
+                        "Sample size (n)",
+                        value=500,
+                        min=2,
+                        max=50_000,
+                        step=10,
+                    ),
+                    ui.input_action_button(
+                        "nb_generate",
+                        "Generate sample",
+                        class_="btn btn-primary mt-2 w-100",
+                    ),
+                    class_="user-form-card",
+                ),
+                ui.output_ui("nb_summary"),
             ),
-            ui.input_numeric(
-                "nb_p",
-                "Success probability (p)",
-                value=0.4,
-                min=1e-6,
-                max=1.0,
-                step=0.01,
+            ui.column(
+                8,
+                ui.output_plot("nb_hist", height="360px"),
             ),
-            ui.input_numeric(
-                "nb_n",
-                "Sample size (n)",
-                value=500,
-                min=2,
-                max=50_000,
-                step=10,
-            ),
-            ui.input_action_button(
-                "nb_generate", "Generate sample", class_="btn btn-primary mt-2"
-            ),
-            class_="user-form-card",
         ),
-        ui.output_ui("nb_summary"),
-        ui.output_plot("nb_hist", height="360px"),
         class_="tab-pane-content",
     )
-
 
 def server(input, output, session):
     """Wire this from app.py: tab_04.server(input, output, session)."""

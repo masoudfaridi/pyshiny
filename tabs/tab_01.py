@@ -14,33 +14,43 @@ NAV_MIN_ROLE = "superadmin"
 
 
 def panel():
-    """UI: mean, variance, sample size → generate → histogram."""
+    """UI: mean, variance, sample size → generate → histogram (Bootstrap grid)."""
     return ui.div(
         ui.h3("Normal distribution"),
         ui.p(
             "Choose the population mean (μ) and variance (σ²), set the sample size, "
             "then generate random draws and view the histogram."
         ),
-        ui.div(
-            ui.input_numeric("norm_mean", "Mean (μ)", value=0.0, step=0.1),
-            ui.input_numeric(
-                "norm_var", "Variance (σ²)", value=1.0, min=1e-6, step=0.1
+        ui.row(
+            ui.column(
+                4,
+                ui.div(
+                    ui.input_numeric("norm_mean", "Mean (μ)", value=0.0, step=0.1),
+                    ui.input_numeric(
+                        "norm_var", "Variance (σ²)", value=1.0, min=1e-6, step=0.1
+                    ),
+                    ui.input_numeric(
+                        "norm_n",
+                        "Sample size (n)",
+                        value=500,
+                        min=2,
+                        max=50_000,
+                        step=10,
+                    ),
+                    ui.input_action_button(
+                        "norm_generate",
+                        "Generate sample",
+                        class_="btn btn-primary mt-2 w-100",
+                    ),
+                    class_="user-form-card",
+                ),
+                ui.output_ui("norm_summary"),
             ),
-            ui.input_numeric(
-                "norm_n",
-                "Sample size (n)",
-                value=500,
-                min=2,
-                max=50_000,
-                step=10,
+            ui.column(
+                8,
+                ui.output_plot("norm_hist", height="360px"),
             ),
-            ui.input_action_button(
-                "norm_generate", "Generate sample", class_="btn btn-primary mt-2"
-            ),
-            class_="user-form-card",
         ),
-        ui.output_ui("norm_summary"),
-        ui.output_plot("norm_hist", height="360px"),
         class_="tab-pane-content",
     )
 

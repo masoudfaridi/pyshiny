@@ -1,26 +1,46 @@
-"""Tables tab module."""
+"""Tables placeholder page."""
 
 from shiny import ui
 
-# Unique identifier used to map sidebar navigation to this module.
 NAV_ID = "tab_06"
-# Human-readable label displayed in the sidebar.
 NAV_LABEL = "Tables"
-# Icon shown for this top-level sidebar item.
 NAV_ICON = "bi-table"
-# None means this item is displayed outside a collapsible group.
 NAV_GROUP = None
-# This page is available to every authenticated role.
 NAV_MIN_ROLE = "guest"
 
+
 def panel():
-    """Return the user interface for the Tables page."""
-    # This page is intended for data tables and related controls.
+    """Simple Bootstrap grid demo for tables."""
     return ui.div(
         ui.h3("Tables"),
-        ui.p(
-            "This is a placeholder for data tables. "
-            "Add filtering, sorting, pagination, selection, and export features here."
+        ui.p("Example layout using Bootstrap rows and columns (12-column grid)."),
+        ui.row(
+            ui.column(
+                12,
+                ui.div(
+                    ui.h5("Full-width row (column 12)"),
+                    ui.p("Use this for wide data tables that need the full content width."),
+                    class_="user-form-card",
+                ),
+            ),
+        ),
+        ui.row(
+            ui.column(
+                6,
+                ui.div(
+                    ui.h5("Column 6"),
+                    ui.p("Half-width table or summary on the left."),
+                    class_="user-form-card mt-3",
+                ),
+            ),
+            ui.column(
+                6,
+                ui.div(
+                    ui.h5("Column 6"),
+                    ui.p("Half-width table or summary on the right."),
+                    class_="user-form-card mt-3",
+                ),
+            ),
         ),
         class_="tab-pane-content",
     )
