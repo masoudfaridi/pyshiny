@@ -272,6 +272,17 @@ def server(input, output, session):
     captcha_image = reactive.Value("")
     captcha_nonce = reactive.Value(0)
 
+    # Register content-tab modules once (namespaces tab_01-..., tab_02-..., ...).
+    # This is the Python equivalent of calling moduleServer() for each tab in R.
+    # Must NOT run inside login or active_panel.
+    tab_01.server()
+    tab_02.server()
+    tab_03.server()
+    tab_04.server()
+    tab_05.server()
+    tab_06.server()
+
+
     def _issue_captcha():
         # Generate a fresh offline image CAPTCHA and store only its hash in session state.
         data_url, answer_hash, expires_at = generate_captcha()
@@ -381,12 +392,6 @@ def server(input, output, session):
         login_error.set("")
         logged_in_user.set(user)
         _issue_captcha()
-
-        ##################
-        tab_01.server(input, output, session)
-        tab_02.server(input, output, session)
-        tab_03.server(input, output, session)
-        tab_04.server(input, output, session)
 
     @render.ui
     def login_message():
