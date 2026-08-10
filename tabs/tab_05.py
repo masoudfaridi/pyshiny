@@ -1,19 +1,38 @@
-"""Widgets placeholder page."""
+"""
+Tab 05 — Widgets placeholder (module-based layout demo).
 
-from shiny import ui
+Uses ``@module.ui`` so any control id is automatically prefixed with ``tab_05-``
+(same role as R Shiny ``ns()``). See ``tab_01.py`` for the full explanation.
+"""
+
+from __future__ import annotations
+
+from shiny import module, ui
 
 NAV_ID = "tab_05"
 NAV_LABEL = "Widgets"
-NAV_ICON = "bi-sliders"
+NAV_ICON = "bi-boxes"
 NAV_GROUP = None
 NAV_MIN_ROLE = "guest"
 
+MODULE_ID = "tab_05"
 
-def panel():
-    """Simple Bootstrap grid demo for widgets."""
+
+@module.ui
+def _ui():
+    """
+    Placeholder UI with a Bootstrap grid.
+
+    If you later add ``ui.input_text("title", ...)``, the DOM id becomes
+    ``tab_05-title`` — safe even if another tab also uses local id ``title``.
+    """
     return ui.div(
         ui.h3("Widgets"),
-        ui.p("Example layout using Bootstrap rows and columns (12-column grid)."),
+        ui.p(
+            "Placeholder for dashboard widgets (KPI cards, charts, status indicators). "
+            "This tab is a Shiny module: new controls can reuse simple local ids "
+            "without colliding with other tabs."
+        ),
         ui.row(
             ui.column(
                 4,
@@ -60,3 +79,18 @@ def panel():
         ),
         class_="tab-pane-content",
     )
+
+
+@module.server
+def _server(input, output, session):
+    """No reactive logic yet; registered so the module namespace stays active."""
+    return
+
+
+def panel():
+    return _ui(MODULE_ID)
+
+
+def server():
+    """Register once from app.py: ``tab_05.server()``."""
+    _server(MODULE_ID)
