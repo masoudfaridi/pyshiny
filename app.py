@@ -225,6 +225,34 @@ def dashboard_ui(role: str) -> ui.Tag:
                 ),
                 ui.tags.div(
                     ui.tags.button(
+                        ui.tags.i(class_="bi bi-type"),
+                        ui.tags.span("Font", id="font-current-label"),
+                        ui.tags.i(class_="bi bi-chevron-down"),
+                        class_="font-button", type="button", aria_label="Choose fonts",
+                    ),
+                    ui.tags.div(
+                        ui.tags.div("Fonts", class_="font-menu-title"),
+                        ui.tags.div(
+                            ui.tags.label("Body / UI", for_="font-select-ui"),
+                            ui.tags.select(id="font-select-ui", class_="font-select"),
+                            class_="font-role-row",
+                        ),
+                        ui.tags.div(
+                            ui.tags.label("Headings", for_="font-select-heading"),
+                            ui.tags.select(id="font-select-heading", class_="font-select"),
+                            class_="font-role-row",
+                        ),
+                        ui.tags.div(
+                            ui.tags.label("Navigation", for_="font-select-nav"),
+                            ui.tags.select(id="font-select-nav", class_="font-select"),
+                            class_="font-role-row",
+                        ),
+                        class_="font-menu",
+                    ),
+                    class_="font-picker",
+                ),
+                ui.tags.div(
+                    ui.tags.button(
                         ui.tags.span("", id="theme-current-swatch", class_="theme-swatch"),
                         ui.tags.span("Ocean Blue", id="theme-current-label"),
                         ui.tags.i(class_="bi bi-chevron-down"),
@@ -257,35 +285,42 @@ def build_app_shell() -> ui.Tag:
 # The dashboard ships in LTR (left-to-right) by default.
 #
 # To switch to RTL (right-to-left, suitable for Persian / Arabic):
-#   1. Comment out the entire "LTR mode" block below.
-#   2. Uncomment the entire "RTL mode" block below.
+#   1. Set APP_DIR_MODE = "rtl" below.
+#   2. Comment out the entire "LTR mode" app_ui block.
+#   3. Uncomment the entire "RTL mode" app_ui block.
 #
-# Only ONE of the two blocks must be active at a time.
-# Both blocks load the shared styles.css + custom.js; the difference is
-# which Bootstrap CSS is used and whether html[dir="rtl"] is set.
-# Bootstrap files live in static/css/ (bootstrap.css / bootstrap.rtl.css).
+# Only ONE of the two app_ui blocks must be active at a time.
+# APP_DIR_MODE is exposed to JavaScript so the Font picker shows the correct
+# font list (static/fonts/ltr vs static/fonts/rtl).
 # =============================================================================
+
+APP_DIR_MODE = "ltr"  # change to "rtl" when activating the RTL block below
 
 # --- LTR mode (default, ACTIVE) ---
 app_ui = ui.page_fillable(
-    # Override Shiny's default Bootstrap with the local LTR build
     ui.tags.link(rel="stylesheet", href="css/bootstrap.css"),
+    ui.tags.link(rel="stylesheet", href="css/fonts.css"),
     ui.tags.style(read_asset("css", "styles.css")),
     ui.tags.script(read_asset("js", "custom.js")),
-    # Ensure document direction is left-to-right
-    ui.tags.script("document.documentElement.setAttribute('dir','ltr');"),
+    ui.tags.script(
+        f"document.documentElement.setAttribute('dir','ltr');"
+        f"window.APP_DIR_MODE='{APP_DIR_MODE}';"
+    ),
     build_app_shell(),
     class_="app-shell-root",
 )
 
 # --- RTL mode (INACTIVE – uncomment this block and comment the LTR block above) ---
+# APP_DIR_MODE = "rtl"
 # app_ui = ui.page_fillable(
-#     # Use Bootstrap RTL so components, grids, and utilities flip correctly
 #     ui.tags.link(rel="stylesheet", href="css/bootstrap.rtl.css"),
+#     ui.tags.link(rel="stylesheet", href="css/fonts.css"),
 #     ui.tags.style(read_asset("css", "styles.css")),
 #     ui.tags.script(read_asset("js", "custom.js")),
-#     # Force document direction to right-to-left (Persian / Arabic)
-#     ui.tags.script("document.documentElement.setAttribute('dir','rtl');"),
+#     ui.tags.script(
+#         f"document.documentElement.setAttribute('dir','rtl');"
+#         f"window.APP_DIR_MODE='{APP_DIR_MODE}';"
+#     ),
 #     build_app_shell(),
 #     class_="app-shell-root",
 # )

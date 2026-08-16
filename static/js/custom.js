@@ -129,8 +129,133 @@
     );
   }
 
+
+  // ---------- Font picker (Body / Headings / Navigation) ----------
+  const FONT_KEY = "adminlte-shiny-fonts";
+
+  const FONTS_RTL = [
+    { id: "vazirmatn", label: "Vazirmatn" },
+    { id: "shabnam", label: "Shabnam" },
+    { id: "samim", label: "Samim" },
+    { id: "sahel", label: "Sahel" },
+    { id: "byekan", label: "BYekan" },
+    { id: "system", label: "System UI" }
+  ];
+
+  const FONTS_LTR = [
+    { id: "inter", label: "Inter" },
+    { id: "roboto", label: "Roboto" },
+    { id: "ibm-plex-sans", label: "IBM Plex Sans" },
+    { id: "source-sans-3", label: "Source Sans 3" },
+    { id: "system", label: "System UI" }
+  ];
+
+  function currentFontList() {
+    const mode = (window.APP_DIR_MODE || document.documentElement.getAttribute("dir") || "ltr").toLowerCase();
+    return mode === "rtl" ? FONTS_RTL : FONTS_LTR;
+  }
+
+  function defaultFonts() {
+    const mode = (window.APP_DIR_MODE || document.documentElement.getAttribute("dir") || "ltr").toLowerCase();
+    if (mode === "rtl") {
+      return { ui: "vazirmatn", heading: "inherit", nav: "inherit" };
+    }
+    return { ui: "inter", heading: "inherit", nav: "inherit" };
+  }
+
+  function loadFontSettings() {
+    try {
+      const raw = localStorage.getItem(FONT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return { ...defaultFonts(), ...parsed };
+      }
+    } catch (e) {}
+    return defaultFonts();
+  }
+
+  function saveFontSettings(settings) {
+    localStorage.setItem(FONT_KEY, JSON.stringify(settings));
+  }
+
+  function applyFonts(settings) {
+    const root = document.documentElement;
+    root.setAttribute("data-font-ui", settings.ui || "system");
+    root.setAttribute("data-font-heading", settings.heading || "inherit");
+    root.setAttribute("data-font-nav", settings.nav || "inherit");
+  }
+
+  function fillSelect(selectEl, fonts, value, includeInherit) {
+    if (!selectEl) return;
+    const opts = [];
+    if (includeInherit) {
+      opts.push({ id: "inherit", label: "Inherit (Body)" });
+    }
+    fonts.forEach((f) => opts.push(f));
+    selectEl.innerHTML = opts
+      .map((f) => `<option value="${f.id}">${f.label}</option>`)
+      .join("");
+    const allowed = opts.map((f) => f.id);
+    selectEl.value = allowed.includes(value) ? value : opts[0].id;
+  }
+
+  function buildFontPicker() {
+    const picker = document.querySelector(".font-picker");
+    if (!picker || picker.dataset.ready === "true") return;
+    picker.dataset.ready = "true";
+
+    const menu = picker.querySelector(".font-menu");
+    const button = picker.querySelector(".font-button");
+    const selUi = document.getElementById("font-select-ui");
+    const selHeading = document.getElementById("font-select-heading");
+    const selNav = document.getElementById("font-select-nav");
+
+    const fonts = currentFontList();
+    let settings = loadFontSettings();
+
+    // Drop saved choices that are not in the current direction list
+    const ids = new Set(fonts.map((f) => f.id));
+    if (settings.ui !== "system" && !ids.has(settings.ui)) settings.ui = defaultFonts().ui;
+    if (settings.heading !== "inherit" && !ids.has(settings.heading)) settings.heading = "inherit";
+    if (settings.nav !== "inherit" && !ids.has(settings.nav)) settings.nav = "inherit";
+
+    fillSelect(selUi, fonts, settings.ui, false);
+    fillSelect(selHeading, fonts, settings.heading, true);
+    fillSelect(selNav, fonts, settings.nav, true);
+    applyFonts(settings);
+    saveFontSettings(settings);
+
+    function onChange() {
+      settings = {
+        ui: selUi.value,
+        heading: selHeading.value,
+        nav: selNav.value
+      };
+      applyFonts(settings);
+      saveFontSettings(settings);
+    }
+
+    if (selUi) selUi.addEventListener("change", onChange);
+    if (selHeading) selHeading.addEventListener("change", onChange);
+    if (selNav) selNav.addEventListener("change", onChange);
+
+    if (button && menu) {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        menu.classList.toggle("open");
+        // Close theme menu if open
+        document.querySelectorAll(".theme-menu.open").forEach((m) => m.classList.remove("open"));
+      });
+      document.addEventListener("click", (event) => {
+        if (!picker.contains(event.target)) menu.classList.remove("open");
+      });
+    }
+  }
+
+
   function init() {
     buildThemePicker();
+    buildFontPicker();
     bindLoginEnterKey();
     bindLoginButtonFlush();
 
@@ -139,6 +264,7 @@
     if (!window.__themeObserverInstalled) {
       const observer = new MutationObserver(() => {
         buildThemePicker();
+        buildFontPicker();
         bindLoginEnterKey();
       });
       observer.observe(document.body, { childList: true, subtree: true });

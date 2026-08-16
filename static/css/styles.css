@@ -19,6 +19,26 @@
   --active-text: #ffffff;
   --input-bg: #ffffff;
   --shadow: 0 1px 2px rgba(0,0,0,.04);
+  /* Font roles – overridden by data-font-* on <html> */
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-heading: var(--font-ui);
+  --font-nav: var(--font-ui);
+}
+
+body {
+  font-family: var(--font-ui);
+}
+
+h1, h2, h3, h4, h5, h6,
+.brand-text,
+.tab-pane-content h3 {
+  font-family: var(--font-heading);
+}
+
+.sidebar-nav,
+.sidebar-link,
+.nav-group {
+  font-family: var(--font-nav);
 }
 
 /* ---------- Light themes ---------- */
@@ -95,7 +115,7 @@ html, body { height:100%; }
 
 body {
   margin:0;
-  font-family:-apple-system,"Segoe UI",Roboto,Tahoma,Vazirmatn,Arial,sans-serif;
+  font-family: var(--font-ui);
   background:var(--page-bg);
   color:var(--text);
   transition:background-color .2s ease,color .2s ease;
@@ -295,4 +315,75 @@ html[dir="rtl"] .login-captcha-row,
 html[dir="rtl"] .user-action-row,
 html[dir="rtl"] .topbar {
   direction: rtl;
+}
+
+/* ---------- Font role stacks (applied via data-font-ui etc. on html) ---------- */
+html[data-font-ui="vazirmatn"] { --font-ui: "Vazirmatn", system-ui, sans-serif; }
+html[data-font-ui="shabnam"] { --font-ui: "Shabnam", system-ui, sans-serif; }
+html[data-font-ui="samim"] { --font-ui: "Samim", system-ui, sans-serif; }
+html[data-font-ui="sahel"] { --font-ui: "Sahel", system-ui, sans-serif; }
+html[data-font-ui="byekan"] { --font-ui: "BYekan", system-ui, sans-serif; }
+html[data-font-ui="inter"] { --font-ui: "Inter", system-ui, sans-serif; }
+html[data-font-ui="roboto"] { --font-ui: "Roboto", system-ui, sans-serif; }
+html[data-font-ui="ibm-plex-sans"] { --font-ui: "IBM Plex Sans", system-ui, sans-serif; }
+html[data-font-ui="source-sans-3"] { --font-ui: "Source Sans 3", system-ui, sans-serif; }
+html[data-font-ui="system"] { --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+
+html[data-font-heading="vazirmatn"] { --font-heading: "Vazirmatn", system-ui, sans-serif; }
+html[data-font-heading="shabnam"] { --font-heading: "Shabnam", system-ui, sans-serif; }
+html[data-font-heading="samim"] { --font-heading: "Samim", system-ui, sans-serif; }
+html[data-font-heading="sahel"] { --font-heading: "Sahel", system-ui, sans-serif; }
+html[data-font-heading="byekan"] { --font-heading: "BYekan", system-ui, sans-serif; }
+html[data-font-heading="inter"] { --font-heading: "Inter", system-ui, sans-serif; }
+html[data-font-heading="roboto"] { --font-heading: "Roboto", system-ui, sans-serif; }
+html[data-font-heading="ibm-plex-sans"] { --font-heading: "IBM Plex Sans", system-ui, sans-serif; }
+html[data-font-heading="source-sans-3"] { --font-heading: "Source Sans 3", system-ui, sans-serif; }
+html[data-font-heading="system"] { --font-heading: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+html[data-font-heading="inherit"] { --font-heading: var(--font-ui); }
+
+html[data-font-nav="vazirmatn"] { --font-nav: "Vazirmatn", system-ui, sans-serif; }
+html[data-font-nav="shabnam"] { --font-nav: "Shabnam", system-ui, sans-serif; }
+html[data-font-nav="samim"] { --font-nav: "Samim", system-ui, sans-serif; }
+html[data-font-nav="sahel"] { --font-nav: "Sahel", system-ui, sans-serif; }
+html[data-font-nav="byekan"] { --font-nav: "BYekan", system-ui, sans-serif; }
+html[data-font-nav="inter"] { --font-nav: "Inter", system-ui, sans-serif; }
+html[data-font-nav="roboto"] { --font-nav: "Roboto", system-ui, sans-serif; }
+html[data-font-nav="ibm-plex-sans"] { --font-nav: "IBM Plex Sans", system-ui, sans-serif; }
+html[data-font-nav="source-sans-3"] { --font-nav: "Source Sans 3", system-ui, sans-serif; }
+html[data-font-nav="system"] { --font-nav: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+html[data-font-nav="inherit"] { --font-nav: var(--font-ui); }
+
+/* Font picker (mirrors theme picker chrome) */
+.font-picker { position: relative; margin-inline-end: 0.5rem; }
+.font-button {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.35rem 0.65rem; border: 1px solid var(--border);
+  border-radius: 0.5rem; background: transparent; color: var(--text);
+  font: inherit; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.font-button:hover { background: var(--surface-hover); border-color: var(--accent); }
+.font-menu {
+  display: none; position: absolute; top: calc(100% + 6px);
+  inset-inline-end: 0; min-width: 260px; max-width: 320px;
+  padding: 0.75rem; border: 1px solid var(--border); border-radius: 0.65rem;
+  background: var(--surface); box-shadow: 0 10px 30px rgba(0,0,0,.15); z-index: 1000;
+}
+.font-menu.open { display: block; }
+.font-menu-title {
+  font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 0.6rem;
+}
+.font-role-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.75rem; margin-bottom: 0.55rem;
+}
+.font-role-row label {
+  font-size: 0.85rem; color: var(--text); margin: 0; white-space: nowrap;
+}
+.font-role-row select {
+  flex: 1; min-width: 0; max-width: 160px;
+  padding: 0.3rem 0.45rem; border: 1px solid var(--border);
+  border-radius: 0.4rem; background: var(--input-bg); color: var(--text);
+  font: inherit; font-size: 0.85rem;
 }

@@ -54,6 +54,23 @@ pyshiny/
     └── tab_users.py           # Superadmin-only user management
 ```
 
+## Font picker
+
+A **Font** button sits next to the theme control. It exposes three roles:
+
+- **Body / UI** – main interface text
+- **Headings** – titles and brand text (`Inherit` = same as Body)
+- **Navigation** – sidebar links (`Inherit` = same as Body)
+
+Available families depend on `APP_DIR_MODE` in `app.py`:
+
+- **ltr** → Inter, Roboto, IBM Plex Sans, Source Sans 3, System UI  
+  (files under `static/fonts/ltr/`)
+- **rtl** → Vazirmatn, Shabnam, Samim, Sahel, BYekan, System UI  
+  (Farsi-digit variants under `static/fonts/rtl/`)
+
+Choices are stored in `localStorage` and re-applied after refresh.
+
 ## LTR / RTL direction
 
 The app is **LTR by default**. To switch to RTL (Persian / Arabic):
