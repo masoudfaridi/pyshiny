@@ -251,12 +251,44 @@ def build_app_shell() -> ui.Tag:
     return ui.div(ui.output_ui("root_ui"), id="root-container")
 
 
+# =============================================================================
+# DIRECTION / LAYOUT MODE  (LTR ↔ RTL)
+# =============================================================================
+# The dashboard ships in LTR (left-to-right) by default.
+#
+# To switch to RTL (right-to-left, suitable for Persian / Arabic):
+#   1. Comment out the entire "LTR mode" block below.
+#   2. Uncomment the entire "RTL mode" block below.
+#
+# Only ONE of the two blocks must be active at a time.
+# Both blocks load the shared styles.css + custom.js; the difference is
+# which Bootstrap CSS is used and whether html[dir="rtl"] is set.
+# Bootstrap files live in static/css/ (bootstrap.css / bootstrap.rtl.css).
+# =============================================================================
+
+# --- LTR mode (default, ACTIVE) ---
 app_ui = ui.page_fillable(
+    # Override Shiny's default Bootstrap with the local LTR build
+    ui.tags.link(rel="stylesheet", href="css/bootstrap.css"),
     ui.tags.style(read_asset("css", "styles.css")),
     ui.tags.script(read_asset("js", "custom.js")),
+    # Ensure document direction is left-to-right
+    ui.tags.script("document.documentElement.setAttribute('dir','ltr');"),
     build_app_shell(),
     class_="app-shell-root",
 )
+
+# --- RTL mode (INACTIVE – uncomment this block and comment the LTR block above) ---
+# app_ui = ui.page_fillable(
+#     # Use Bootstrap RTL so components, grids, and utilities flip correctly
+#     ui.tags.link(rel="stylesheet", href="css/bootstrap.rtl.css"),
+#     ui.tags.style(read_asset("css", "styles.css")),
+#     ui.tags.script(read_asset("js", "custom.js")),
+#     # Force document direction to right-to-left (Persian / Arabic)
+#     ui.tags.script("document.documentElement.setAttribute('dir','rtl');"),
+#     build_app_shell(),
+#     class_="app-shell-root",
+# )
 
 
 def server(input, output, session):
@@ -865,4 +897,4 @@ def server(input, output, session):
 
 
 
-app = App(app_ui, server)
+app = App(app_ui, server, static_assets=STATIC_DIR)

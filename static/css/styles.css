@@ -216,14 +216,14 @@ body {
 .login-card .form-label { margin-top:.7rem; }
 .login-card .btn { margin-top:1rem; }
 .login-error { margin-top:1rem; color:#dc2626; text-align:center; font-weight:600; }
-.role-badge, .username-badge { padding:.35rem .65rem; border-radius:999px; font-size:.78rem; margin-right:.45rem; background:var(--surface-2); color:var(--text); }
-.logout-button { border:1px solid var(--border); background:transparent; color:var(--text); border-radius:8px; padding:.4rem .65rem; margin-right:.75rem; }
+.role-badge, .username-badge { padding:.35rem .65rem; border-radius:999px; font-size:.78rem; margin-inline-end:.45rem; background:var(--surface-2); color:var(--text); }
+.logout-button { border:1px solid var(--border); background:transparent; color:var(--text); border-radius:8px; padding:.4rem .65rem; margin-inline-end:.75rem; }
 .logout-button:hover { background:var(--surface-2); }
 .user-form-card { max-width:620px; padding:1.25rem; border:1px solid var(--border); border-radius:14px; background:var(--card-bg); }
 .user-form-card .form-group { margin-bottom:.8rem; }
 .user-create-message { margin-top:1rem; font-weight:600; }
 .users-table { width:100%; border-collapse:collapse; background:var(--card-bg); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
-.users-table th, .users-table td { padding:.7rem .8rem; border-bottom:1px solid var(--border); text-align:left; }
+.users-table th, .users-table td { padding:.7rem .8rem; border-bottom:1px solid var(--border); text-align:start; }
 .users-table th { background:var(--surface-2); }
 
 /* Dark-mode surfaces used by authentication and user management. */
@@ -269,3 +269,30 @@ body {
   object-fit: contain;
 }
 .login-captcha-refresh { white-space: nowrap; }
+
+/* ---------- RTL support (activated when html[dir="rtl"]) ---------- */
+/* Bootstrap RTL CSS handles most component flipping. These rules
+   only adjust custom dashboard chrome that is not covered by BS. */
+html[dir="rtl"] body {
+  direction: rtl;
+  text-align: right;
+}
+
+html[dir="rtl"] .theme-menu {
+  inset-inline-end: 0;
+  inset-inline-start: auto;
+}
+
+html[dir="rtl"] .group-toggle .chevron {
+  transform: scaleX(-1);
+}
+html[dir="rtl"] .group-toggle[aria-expanded="true"] .chevron {
+  transform: scaleX(-1) rotate(180deg);
+}
+
+/* Keep flex rows readable in RTL without forcing row-reverse on everything */
+html[dir="rtl"] .login-captcha-row,
+html[dir="rtl"] .user-action-row,
+html[dir="rtl"] .topbar {
+  direction: rtl;
+}

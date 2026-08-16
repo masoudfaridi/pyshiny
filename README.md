@@ -54,7 +54,21 @@ pyshiny/
     └── tab_users.py           # Superadmin-only user management
 ```
 
+## LTR / RTL direction
+
+The app is **LTR by default**. To switch to RTL (Persian / Arabic):
+
+1. Open `app.py` and find the section marked `DIRECTION / LAYOUT MODE`.
+2. Comment out the entire **LTR mode** `app_ui = ...` block.
+3. Uncomment the entire **RTL mode** `app_ui = ...` block.
+
+Only one of the two blocks must be active. RTL mode loads `static/css/bootstrap.rtl.css`
+and sets `dir="rtl"` on the document; LTR mode loads `static/css/bootstrap.css` and sets `dir="ltr"`.
+Custom dashboard styles in `static/css/styles.css` already use logical properties
+and contain a small `html[dir="rtl"]` section for the remaining chrome.
+
 ## Installation
+
 
 Follow these steps in order after extracting the archive.
 
