@@ -210,63 +210,72 @@ def dashboard_ui(role: str) -> ui.Tag:
                     href="https://github.com/masoudfaridi/pyshiny",
                     target="_blank",
                 ),
-                class_="brand",
+                class_="brand brand-center",
             ),
             ui.tags.div(
-                ui.tags.span(f"{current_role().title()}", class_="role-badge"),
-                ui.tags.span(current_user()["username"], class_="username-badge"),
-                ui.input_action_button(
-                    "logout_button",
-                    ui.tags.span(
-                        ui.tags.i(class_="bi bi-box-arrow-right"),
-                        " Logout",
+                ui.tags.div(
+                    ui.tags.span(f"{current_role().title()}", class_="role-badge"),
+                    ui.tags.span(current_user()["username"], class_="username-badge"),
+                    ui.input_action_button(
+                        "logout_button",
+                        ui.tags.span(
+                            ui.tags.i(class_="bi bi-box-arrow-right"),
+                            " Logout",
+                        ),
+                        class_="logout-button",
                     ),
-                    class_="logout-button",
+                    class_="topbar-user",
                 ),
                 ui.tags.div(
-                    ui.tags.button(
-                        ui.tags.i(class_="bi bi-type"),
-                        ui.tags.span("Font", id="font-current-label"),
-                        ui.tags.i(class_="bi bi-chevron-down"),
-                        class_="font-button", type="button", aria_label="Choose fonts",
+                    ui.tags.div(
+                        ui.tags.button(
+                            ui.tags.i(class_="bi bi-type"),
+                            ui.tags.span("Font", id="font-current-label"),
+                            ui.tags.i(class_="bi bi-chevron-down"),
+                            class_="font-button", type="button", aria_label="Choose fonts",
+                        ),
+                        ui.tags.div(
+                            ui.tags.div("Fonts", class_="font-menu-title"),
+                            ui.tags.div(
+                                ui.tags.label("Body / UI", for_="font-select-ui"),
+                                ui.tags.select(id="font-select-ui", class_="font-select"),
+                                class_="font-role-row",
+                            ),
+                            ui.tags.div(
+                                ui.tags.label("Headings", for_="font-select-heading"),
+                                ui.tags.select(id="font-select-heading", class_="font-select"),
+                                class_="font-role-row",
+                            ),
+                            ui.tags.div(
+                                ui.tags.label("Navigation", for_="font-select-nav"),
+                                ui.tags.select(id="font-select-nav", class_="font-select"),
+                                class_="font-role-row",
+                            ),
+                            class_="font-menu",
+                        ),
+                        class_="font-picker",
                     ),
                     ui.tags.div(
-                        ui.tags.div("Fonts", class_="font-menu-title"),
-                        ui.tags.div(
-                            ui.tags.label("Body / UI", for_="font-select-ui"),
-                            ui.tags.select(id="font-select-ui", class_="font-select"),
-                            class_="font-role-row",
+                        ui.tags.button(
+                            ui.tags.span("", id="theme-current-swatch", class_="theme-swatch"),
+                            ui.tags.span("Ocean Blue", id="theme-current-label"),
+                            ui.tags.i(class_="bi bi-chevron-down"),
+                            class_="theme-button", type="button", aria_label="Choose theme",
                         ),
                         ui.tags.div(
-                            ui.tags.label("Headings", for_="font-select-heading"),
-                            ui.tags.select(id="font-select-heading", class_="font-select"),
-                            class_="font-role-row",
+                            ui.tags.div("Light themes", class_="theme-section-title"),
+                            ui.tags.div(class_="theme-options-light"),
+                            ui.tags.div("Dark themes", class_="theme-section-title"),
+                            ui.tags.div(class_="theme-options-dark"),
+                            class_="theme-menu",
                         ),
-                        ui.tags.div(
-                            ui.tags.label("Navigation", for_="font-select-nav"),
-                            ui.tags.select(id="font-select-nav", class_="font-select"),
-                            class_="font-role-row",
-                        ),
-                        class_="font-menu",
+                        class_="theme-picker",
                     ),
-                    class_="font-picker",
+                    class_="topbar-controls",
                 ),
-                ui.tags.div(
-                    ui.tags.button(
-                        ui.tags.span("", id="theme-current-swatch", class_="theme-swatch"),
-                        ui.tags.span("Ocean Blue", id="theme-current-label"),
-                        ui.tags.i(class_="bi bi-chevron-down"),
-                        class_="theme-button", type="button", aria_label="Choose theme",
-                    ),
-                    ui.tags.div(
-                        ui.tags.div("Light themes", class_="theme-section-title"),
-                        ui.tags.div(class_="theme-options-light"),
-                        ui.tags.div("Dark themes", class_="theme-section-title"),
-                        ui.tags.div(class_="theme-options-dark"),
-                        class_="theme-menu",
-                    ), class_="theme-picker",
-                ),
-            ), class_="topbar",
+                class_="topbar-right",
+            ),
+            class_="topbar",
         ),
         ui.layout_sidebar(
             ui.sidebar(build_sidebar(role), width="260px", open="desktop", title=None),
