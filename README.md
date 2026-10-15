@@ -51,6 +51,7 @@ pyshiny/
     ├── tab_04.py              # Components (Guest+)
     ├── tab_05.py              # Widgets
     ├── tab_06.py              # Tables
+    ├── tab_07.py              # Role-gated buttons (superadmin/admin/user/guest)
     ├── tab_account.py         # Self-service account and password management
     ├── tab_users.py           # Superadmin-only user management
     ├── HOW_TO_ADD_A_TAB.md    # Every place to edit when adding a tab

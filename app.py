@@ -62,13 +62,13 @@ from auth import (
 )
 
 from i18n import APP_LANG, DIRECTION, IS_RTL, js_bundle, role_label, t
-from tabs import tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_account, tab_users
+from tabs import tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_account, tab_users
 
 APP_DIR = Path(__file__).parent
 STATIC_DIR = APP_DIR / "static"
 
 # Order here = order shown in the sidebar, top to bottom.
-TABS = [tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_account, tab_users]
+TABS = [tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_account, tab_users]
 TAB_LOOKUP = {tab.NAV_ID: tab for tab in TABS}
 DEFAULT_TAB_ID = "tab_04"  # guest-accessible default so lower roles land on a valid page
 
@@ -397,6 +397,11 @@ def server(input, output, session):
         ):
             logged_in_user.set(dict(fresh))
         return fresh
+
+    # tab_07 (role-gated buttons) receives the *validating* getter, not the raw
+    # reactive value, so each click re-checks the account in SQLite. It must be
+    # registered after _ensure_valid_session is defined, and only once.
+    tab_07.server(_ensure_valid_session)
 
     @reactive.effect
     def _ensure_captcha_ready():

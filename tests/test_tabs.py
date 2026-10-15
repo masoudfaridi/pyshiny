@@ -12,6 +12,7 @@ TAB_MODULES = [
     "tabs.tab_04",
     "tabs.tab_05",
     "tabs.tab_06",
+    "tabs.tab_07",
     "tabs.tab_account",
     "tabs.tab_users",
 ]
