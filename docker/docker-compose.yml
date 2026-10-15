@@ -9,6 +9,10 @@
 #
 # Or put PORT=9000 in a .env file next to this one (copy .env.example).
 #
+# Persian (RTL) interface instead of English:
+#
+#   APP_LANG=fa docker compose up --build -d
+#
 # Stop it with:
 #
 #   docker compose down
@@ -22,6 +26,7 @@ services:
     container_name: pyshiny
     environment:
       PORT: "${PORT:-8000}"
+      APP_LANG: "${APP_LANG:-en}"   # "en" (LTR) or "fa" (RTL) -- see i18n.py
     ports:
       - "${PORT:-8000}:${PORT:-8000}"
     volumes:

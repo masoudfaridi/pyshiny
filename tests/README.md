@@ -33,6 +33,9 @@ python -m pytest -v
 | `test_tabs.py` | Tab module metadata contracts |
 | `test_sidebar.py` | Sidebar visibility by role |
 | `test_assets.py` | Static files, exports, APP_DIR_MODE |
+| `test_examples.py` | Every module in `tabs/examples/` follows the tab contract |
+| `test_theme_coverage.py` | All 12 themes define the variables; widget selectors, sidebar toggle wiring, CAPTCHA size/font |
+| `test_i18n.py` | English/Persian dictionary parity, `APP_LANG` selection, JS theme names |
 | `test_auth_package.py` | Context manager / constants smoke |
 
 All mutating tests use a **temporary database** (`isolated_db`); the real `db/auth.db` is never modified.

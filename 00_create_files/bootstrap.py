@@ -84,6 +84,7 @@ def sanity_checks(root: Path) -> list[str]:
     """Return a list of missing critical paths (empty list = all good)."""
     required = [
         "app.py",
+        "i18n.py",
         "requirements.txt",
         "auth/__init__.py",
         "auth/core.py",

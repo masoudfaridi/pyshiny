@@ -21,6 +21,12 @@ PORT=9000 docker compose up --build -d
 
 or copy `docker/.env.example` to `docker/.env` and set `PORT` there once.
 
+Persian (right-to-left) interface instead of English:
+
+```bash
+APP_LANG=fa docker compose up --build -d
+```
+
 Stop it:
 
 ```bash

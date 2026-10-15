@@ -14,6 +14,8 @@ from datetime import date
 from functools import wraps
 from pathlib import Path
 
+from i18n import t
+
 # Project root is one level above this package (auth/).
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "db" / "auth.db"
@@ -79,10 +81,7 @@ def validate_username(username: str) -> str:
     """Normalize and validate a username."""
     username = (username or "").strip()
     if not USERNAME_RE.fullmatch(username):
-        raise ValueError(
-            "Username must be 3–32 characters and contain only letters, "
-            "numbers, underscores, or hyphens."
-        )
+        raise ValueError(t("err_username_format"))
     return username
 
 
@@ -90,30 +89,29 @@ def validate_password(
     password: str,
     *,
     strict: bool = False,
-    field_name: str = "Password",
+    field_name: str | None = None,
 ) -> str:
     """Validate password length and optional complexity rules.
 
     Superadmin-assigned passwords use strict=False (length only).
     Self-service password changes use strict=True.
     """
+    field_name = field_name or t("field_password")
     if not password:
-        raise ValueError(f"{field_name} is required.")
+        raise ValueError(t("err_password_required", field=field_name))
     if len(password) < PASSWORD_MIN_LEN:
         raise ValueError(
-            f"{field_name} must contain at least {PASSWORD_MIN_LEN} characters."
+            t("err_password_min", field=field_name, n=PASSWORD_MIN_LEN)
         )
     if len(password) > PASSWORD_MAX_LEN:
         raise ValueError(
-            f"{field_name} must contain at most {PASSWORD_MAX_LEN} characters."
+            t("err_password_max", field=field_name, n=PASSWORD_MAX_LEN)
         )
     if strict:
         has_letter = any(c.isalpha() for c in password)
         has_digit = any(c.isdigit() for c in password)
         if not (has_letter and has_digit):
-            raise ValueError(
-                f"{field_name} must contain at least one letter and one number."
-            )
+            raise ValueError(t("err_password_complexity", field=field_name))
     return password
 
 
@@ -126,7 +124,7 @@ def _normalize_expiry(expire_date: str | None, role: str) -> str | None:
     try:
         parsed = date.fromisoformat(str(expire_date))
     except ValueError as exc:
-        raise ValueError("Expiration date must use YYYY-MM-DD format.") from exc
+        raise ValueError(t("err_expiry_format")) from exc
     return parsed.isoformat()
 
 
@@ -345,10 +343,10 @@ def change_own_password(current_password: str, new_password: str) -> None:
     """Change the password of the currently authenticated user."""
     current = current_user()
     if current is None:
-        raise PermissionError("Authentication is required.")
+        raise PermissionError(t("err_auth_required"))
 
     new_password = validate_password(
-        new_password, strict=True, field_name="New password"
+        new_password, strict=True, field_name=t("field_new_password")
     )
 
     with sqlite3.connect(DB_PATH) as con:
@@ -357,7 +355,7 @@ def change_own_password(current_password: str, new_password: str) -> None:
             (current["id"],),
         ).fetchone()
         if row is None or not _verify_password(current_password, row[0]):
-            raise ValueError("Current password is incorrect.")
+            raise ValueError(t("err_current_password"))
 
         con.execute(
             "UPDATE users SET password_hash=? WHERE id=?",
@@ -378,7 +376,7 @@ def create_user(
     # Superadmin-assigned passwords: length bounds only (no complexity rules).
     password = validate_password(password, strict=False)
     if role not in ROLE_LEVELS:
-        raise ValueError("Invalid role.")
+        raise ValueError(t("err_invalid_role"))
     expire_date = _normalize_expiry(expire_date, role)
 
     with sqlite3.connect(DB_PATH) as con:
@@ -413,7 +411,7 @@ def update_user(
     """Update account details. Only Superadmin users may call this function."""
     username = validate_username(username)
     if role not in ROLE_LEVELS:
-        raise ValueError("Invalid role.")
+        raise ValueError(t("err_invalid_role"))
     if new_password:
         # Superadmin-assigned passwords: length bounds only.
         new_password = validate_password(new_password, strict=False)
@@ -424,7 +422,7 @@ def update_user(
             "SELECT role, is_active FROM users WHERE id=?", (user_id,)
         ).fetchone()
         if current is None:
-            raise ValueError("User not found.")
+            raise ValueError(t("err_user_not_found"))
 
         if current[0] == "superadmin" and current[1] and (
             role != "superadmin" or not is_active
@@ -433,7 +431,7 @@ def update_user(
                 "SELECT COUNT(*) FROM users WHERE role='superadmin' AND is_active=1"
             ).fetchone()[0]
             if count <= 1:
-                raise ValueError("At least one active Superadmin must remain.")
+                raise ValueError(t("err_last_superadmin"))
 
         if new_password:
             con.execute(
@@ -462,21 +460,21 @@ def delete_user(user_id: int) -> None:
     current = current_user()
 
     if current and int(current["id"]) == int(user_id):
-        raise ValueError("You cannot delete the account you are currently using.")
+        raise ValueError(t("err_delete_self"))
 
     with sqlite3.connect(DB_PATH) as con:
         row = con.execute(
             "SELECT role, is_active FROM users WHERE id=?", (user_id,)
         ).fetchone()
         if row is None:
-            raise ValueError("User not found.")
+            raise ValueError(t("err_user_not_found"))
 
         if row[0] == "superadmin" and row[1]:
             count = con.execute(
                 "SELECT COUNT(*) FROM users WHERE role='superadmin' AND is_active=1"
             ).fetchone()[0]
             if count <= 1:
-                raise ValueError("The last active Superadmin cannot be deleted.")
+                raise ValueError(t("err_delete_last_superadmin"))
 
         con.execute("DELETE FROM users WHERE id=?", (user_id,))
         con.commit()

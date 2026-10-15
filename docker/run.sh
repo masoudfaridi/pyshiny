@@ -5,6 +5,7 @@
 #   bash docker/run.sh            # runs on port 8000
 #   bash docker/run.sh 9000       # runs on port 9000
 #   ./docker/run.sh 9000          # same, if it's executable
+#   APP_LANG=fa bash docker/run.sh   # Persian (RTL) interface
 #
 # Builds the image, then runs it detached with the SQLite database
 # persisted in ./db on the host (so accounts survive restarts/rebuilds).
@@ -35,6 +36,7 @@ echo "==> Starting container on port ${PORT} ..."
 docker run -d \
     --name "${CONTAINER_NAME}" \
     -e "PORT=${PORT}" \
+    -e "APP_LANG=${APP_LANG:-en}" \
     -p "${PORT}:${PORT}" \
     -v "${PROJECT_ROOT}/db:/app/db" \
     --restart unless-stopped \

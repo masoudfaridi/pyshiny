@@ -41,6 +41,7 @@ class TestProjectLayout:
             "auth/captcha.py",
             "auth/__init__.py",
             "app.py",
+            "i18n.py",
             "requirements.txt",
             "static/css/styles.css",
             "static/js/custom.js",

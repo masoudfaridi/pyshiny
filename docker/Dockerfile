@@ -54,6 +54,9 @@ USER appuser
 # and docker-compose.yml both do this for you automatically from a single
 # PORT value, so you never have to edit this file to change ports.
 ENV PORT=8000
+# Interface language: "en" (English, LTR) or "fa" (Persian, RTL). Override with
+# `-e APP_LANG=fa` (docker/run.sh and docker-compose.yml pass it through).
+ENV APP_LANG=en
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \

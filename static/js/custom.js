@@ -2,6 +2,19 @@
 (function () {
   const THEME_KEY = "adminlte-shiny-theme";
 
+  // Translated UI strings injected by app.py as window.APP_I18N (see i18n.py).
+  // Every lookup falls back to the English text, so the script still works
+  // when APP_I18N is missing.
+  function i18n(key, fallback) {
+    const bundle = window.APP_I18N || {};
+    return bundle[key] !== undefined ? bundle[key] : fallback;
+  }
+
+  function themeLabel(name, theme) {
+    const names = (window.APP_I18N && window.APP_I18N.themes) || {};
+    return names[name] || theme.label;
+  }
+
   const themes = {
     "light-blue":   { label: "Ocean Blue", mode: "Light", color: "#2563eb" },
     "light-green":  { label: "Fresh Green", mode: "Light", color: "#16a34a" },
@@ -19,7 +32,12 @@
 
   function applyTheme(name) {
     if (!themes[name]) name = "light-blue";
-    document.documentElement.setAttribute("data-theme", name);
+    const root = document.documentElement;
+    root.setAttribute("data-theme", name);
+    // Bootstrap 5.3 has a built-in dark palette for every component (forms,
+    // modals, cards, dropdowns, close buttons ...). Switching it together with
+    // our theme means widgets we did not style by hand still follow the theme.
+    root.setAttribute("data-bs-theme", themes[name].mode === "Dark" ? "dark" : "light");
     localStorage.setItem(THEME_KEY, name);
 
     document.querySelectorAll(".theme-option").forEach((el) => {
@@ -29,7 +47,7 @@
     const current = themes[name];
     const label = document.querySelector("#theme-current-label");
     const swatch = document.querySelector("#theme-current-swatch");
-    if (label) label.textContent = current.label;
+    if (label) label.textContent = themeLabel(name, current);
     if (swatch) swatch.style.background = current.color;
   }
 
@@ -52,8 +70,10 @@
       option.innerHTML = `
         <span class="theme-dot" style="background:${theme.color}"></span>
         <span class="theme-meta">
-          <span>${theme.label}</span>
-          <small>${theme.mode} theme</small>
+          <span>${themeLabel(name, theme)}</span>
+          <small>${theme.mode === "Light"
+            ? i18n("theme_light_suffix", "Light theme")
+            : i18n("theme_dark_suffix", "Dark theme")}</small>
         </span>`;
       option.addEventListener("click", () => {
         applyTheme(name);
@@ -73,6 +93,59 @@
 
     const saved = localStorage.getItem(THEME_KEY) || "light-blue";
     applyTheme(saved);
+  }
+
+  // ---- Sidebar toggle -------------------------------------------------------
+  // The menu is a plain element (<aside id="app-sidebar">); collapsing it is a
+  // CSS class on .app-shell ("sidebar-collapsed"). Desktop remembers the choice;
+  // on phones the menu starts closed and slides over the content.
+  const SIDEBAR_KEY = "adminlte-shiny-sidebar";
+  const mobileQuery = window.matchMedia("(max-width: 767.98px)");
+
+  function setSidebarCollapsed(collapsed, persist) {
+    const shell = document.querySelector(".app-shell");
+    if (!shell) return;
+    shell.classList.toggle("sidebar-collapsed", collapsed);
+    const btn = document.getElementById("sidebar-toggle-btn");
+    if (btn) {
+      btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      btn.classList.toggle("is-collapsed", collapsed);
+    }
+    if (persist && !mobileQuery.matches) {
+      try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "closed" : "open"); } catch (e) { /* private mode */ }
+    }
+  }
+
+  function setupSidebarToggle() {
+    const btn = document.getElementById("sidebar-toggle-btn");
+    if (!btn || btn.dataset.ready === "true") return;
+    btn.dataset.ready = "true";
+
+    let saved = null;
+    try { saved = localStorage.getItem(SIDEBAR_KEY); } catch (e) { /* ignore */ }
+    setSidebarCollapsed(mobileQuery.matches ? true : saved === "closed", false);
+
+    btn.addEventListener("click", () => {
+      const shell = document.querySelector(".app-shell");
+      if (shell) setSidebarCollapsed(!shell.classList.contains("sidebar-collapsed"), true);
+    });
+
+    if (!window.__sidebarGlobalsBound) {
+      window.__sidebarGlobalsBound = true;
+      // Tap outside the menu (phones) closes it; so does choosing a page.
+      document.addEventListener("click", (event) => {
+        if (!mobileQuery.matches) return;
+        if (event.target.closest("#sidebar-backdrop") || event.target.closest(".sidebar-link[data-nav-id]")) {
+          setSidebarCollapsed(true, false);
+        }
+      });
+      // Rotating a tablet / resizing the window switches between the two modes.
+      mobileQuery.addEventListener("change", (event) => {
+        let pref = null;
+        try { pref = localStorage.getItem(SIDEBAR_KEY); } catch (e) { /* ignore */ }
+        setSidebarCollapsed(event.matches ? true : pref === "closed", false);
+      });
+    }
   }
 
   function submitLoginForm() {
@@ -152,7 +225,12 @@
 
   function currentFontList() {
     const mode = (window.APP_DIR_MODE || document.documentElement.getAttribute("dir") || "ltr").toLowerCase();
-    return mode === "rtl" ? FONTS_RTL : FONTS_LTR;
+    const list = mode === "rtl" ? FONTS_RTL : FONTS_LTR;
+    // Resolve the translated label now (not at load time): window.APP_I18N is
+    // defined by an inline script that runs after this file is parsed.
+    return list.map((f) =>
+      f.id === "system" ? { ...f, label: i18n("font_system", f.label) } : f
+    );
   }
 
   function defaultFonts() {
@@ -189,7 +267,7 @@
     if (!selectEl) return;
     const opts = [];
     if (includeInherit) {
-      opts.push({ id: "inherit", label: "Inherit (Body)" });
+      opts.push({ id: "inherit", label: i18n("font_inherit", "Inherit (Body)") });
     }
     fonts.forEach((f) => opts.push(f));
     selectEl.innerHTML = opts
@@ -256,6 +334,7 @@
   function init() {
     buildThemePicker();
     buildFontPicker();
+    setupSidebarToggle();
     bindLoginEnterKey();
     bindLoginButtonFlush();
 
@@ -265,6 +344,7 @@
       const observer = new MutationObserver(() => {
         buildThemePicker();
         buildFontPicker();
+        setupSidebarToggle();
         bindLoginEnterKey();
       });
       observer.observe(document.body, { childList: true, subtree: true });
@@ -315,13 +395,25 @@
           event.preventDefault();
           const userId = deleteBtn.getAttribute("data-user-id");
           const username = deleteBtn.getAttribute("data-username") || userId;
-          if (!window.confirm("Delete user \"" + username + "\"? This cannot be undone.")) {
+          const confirmText = i18n(
+            "users_confirm_delete",
+            'Delete user "{username}"? This cannot be undone.'
+          ).replace("{username}", username);
+          if (!window.confirm(confirmText)) {
             return;
           }
           Shiny.setInputValue("user_action_delete", userId, { priority: "event" });
         }
       });
     }
+  }
+
+  // Apply the saved theme immediately (also on the login page, which has no
+  // theme picker) so the first paint already uses the right colours.
+  try {
+    applyTheme(localStorage.getItem(THEME_KEY) || "light-blue");
+  } catch (e) {
+    applyTheme("light-blue");
   }
 
   if (document.readyState === "loading") {

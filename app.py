@@ -11,6 +11,7 @@ tabs/tab_0N.py     One file per sidebar entry: its label/icon/group, and
 auth/              Authentication package (RBAC, passwords, expiration).
 db/                SQLite database (auth.db).
 static/            CSS and JavaScript assets (static/css, static/js).
+i18n.py            Bilingual (English / Persian) UI strings + the APP_LANG switch.
 
 How the sidebar is built
 --------------------------
@@ -35,6 +36,7 @@ Adding a new tab
 3. If it should start a *new* collapsible group, add one line to GROUPS.
 """
 
+import json
 from datetime import date
 from pathlib import Path
 
@@ -59,6 +61,7 @@ from auth import (
     verify_captcha,
 )
 
+from i18n import APP_LANG, DIRECTION, IS_RTL, js_bundle, role_label, t
 from tabs import tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_account, tab_users
 
 APP_DIR = Path(__file__).parent
@@ -72,7 +75,7 @@ DEFAULT_TAB_ID = "tab_04"  # guest-accessible default so lower roles land on a v
 # A "group" is not a tab by itself -- it's just a collapsible header in the
 # sidebar for every tab whose NAV_GROUP matches its key.
 GROUPS = {
-    "dashboard": {"label": "Dashboard", "icon": "bi-speedometer2"},
+    "dashboard": {"label": t("nav_dashboard"), "icon": "bi-speedometer2"},
 }
 
 
@@ -167,27 +170,23 @@ def login_ui() -> ui.Tag:
         ui.div(
             ui.div(
                 ui.tags.i(class_="bi bi-shield-lock login-icon"),
-                ui.h2("Secure Dashboard"),
-                ui.p("Please sign in to continue.", class_="login-subtitle"),
-                ui.input_text("login_username", "Username", placeholder="Username"),
-                ui.input_password("login_password", "Password", placeholder="Password"),
+                ui.h2(t("login_title")),
+                ui.p(t("login_subtitle"), class_="login-subtitle"),
+                ui.input_text("login_username", t("username"), placeholder=t("username")),
+                ui.input_password("login_password", t("password"), placeholder=t("password")),
                 ui.div(
-                    ui.tags.label("Security check", class_="form-label"),
+                    ui.tags.label(t("login_security_check"), class_="form-label"),
                     ui.output_ui("login_captcha_ui"),
                     ui.input_text(
                         "login_captcha",
                         None,
-                        placeholder="Type the characters you see",
+                        placeholder=t("login_captcha_placeholder"),
                     ),
                     class_="login-captcha-block",
                 ),
-                ui.input_action_button("login_button", "Sign in", class_="btn btn-primary w-100"),
+                ui.input_action_button("login_button", t("login_button"), class_="btn btn-primary w-100"),
                 ui.output_ui("login_message"),
-                ui.p(
-                    "Default accounts are documented in README.md. "
-                    "Change default passwords after first login.",
-                    class_="login-hint",
-                ),
+                ui.p(t("login_hint"), class_="login-hint"),
                 class_="login-card",
             ),
             class_="login-page",
@@ -199,9 +198,24 @@ def dashboard_ui(role: str) -> ui.Tag:
     return ui.div(
         ui.tags.header(
             ui.tags.div(
-                ui.tags.i(class_="bi bi-hexagon-fill"),
-                ui.tags.span("Python Shiny Dashboard", class_="brand-text"),
-                class_="brand",
+                # Big, always-visible sidebar toggle. static/js/custom.js wires it
+                # to the sidebar's built-in collapse control (see setupSidebarToggle).
+                ui.tags.button(
+                    ui.tags.i(class_="bi bi-list"),
+                    id="sidebar-toggle-btn",
+                    class_="sidebar-toggle-btn",
+                    type="button",
+                    title=t("sidebar_toggle"),
+                    aria_label=t("sidebar_toggle"),
+                    aria_expanded="true",
+                    aria_controls="app-sidebar",
+                ),
+                ui.tags.div(
+                    ui.tags.i(class_="bi bi-hexagon-fill"),
+                    ui.tags.span(t("brand"), class_="brand-text"),
+                    class_="brand",
+                ),
+                class_="topbar-left",
             ),
             ui.tags.div(
                 ui.tags.i(class_="bi bi-hexagon-fill"),
@@ -214,13 +228,13 @@ def dashboard_ui(role: str) -> ui.Tag:
             ),
             ui.tags.div(
                 ui.tags.div(
-                    ui.tags.span(f"{current_role().title()}", class_="role-badge"),
+                    ui.tags.span(role_label(current_role()), class_="role-badge"),
                     ui.tags.span(current_user()["username"], class_="username-badge"),
                     ui.input_action_button(
                         "logout_button",
                         ui.tags.span(
                             ui.tags.i(class_="bi bi-box-arrow-right"),
-                            " Logout",
+                            " " + t("logout"),
                         ),
                         class_="logout-button",
                     ),
@@ -230,24 +244,24 @@ def dashboard_ui(role: str) -> ui.Tag:
                     ui.tags.div(
                         ui.tags.button(
                             ui.tags.i(class_="bi bi-type"),
-                            ui.tags.span("Font", id="font-current-label"),
+                            ui.tags.span(t("font_button"), id="font-current-label"),
                             ui.tags.i(class_="bi bi-chevron-down"),
-                            class_="font-button", type="button", aria_label="Choose fonts",
+                            class_="font-button", type="button", aria_label=t("font_aria"),
                         ),
                         ui.tags.div(
-                            ui.tags.div("Fonts", class_="font-menu-title"),
+                            ui.tags.div(t("font_menu_title"), class_="font-menu-title"),
                             ui.tags.div(
-                                ui.tags.label("Body / UI", for_="font-select-ui"),
+                                ui.tags.label(t("font_body"), for_="font-select-ui"),
                                 ui.tags.select(id="font-select-ui", class_="font-select"),
                                 class_="font-role-row",
                             ),
                             ui.tags.div(
-                                ui.tags.label("Headings", for_="font-select-heading"),
+                                ui.tags.label(t("font_headings"), for_="font-select-heading"),
                                 ui.tags.select(id="font-select-heading", class_="font-select"),
                                 class_="font-role-row",
                             ),
                             ui.tags.div(
-                                ui.tags.label("Navigation", for_="font-select-nav"),
+                                ui.tags.label(t("font_navigation"), for_="font-select-nav"),
                                 ui.tags.select(id="font-select-nav", class_="font-select"),
                                 class_="font-role-row",
                             ),
@@ -258,14 +272,14 @@ def dashboard_ui(role: str) -> ui.Tag:
                     ui.tags.div(
                         ui.tags.button(
                             ui.tags.span("", id="theme-current-swatch", class_="theme-swatch"),
-                            ui.tags.span("Ocean Blue", id="theme-current-label"),
+                            ui.tags.span(t("theme_light-blue"), id="theme-current-label"),
                             ui.tags.i(class_="bi bi-chevron-down"),
-                            class_="theme-button", type="button", aria_label="Choose theme",
+                            class_="theme-button", type="button", aria_label=t("theme_aria"),
                         ),
                         ui.tags.div(
-                            ui.tags.div("Light themes", class_="theme-section-title"),
+                            ui.tags.div(t("theme_light_title"), class_="theme-section-title"),
                             ui.tags.div(class_="theme-options-light"),
-                            ui.tags.div("Dark themes", class_="theme-section-title"),
+                            ui.tags.div(t("theme_dark_title"), class_="theme-section-title"),
                             ui.tags.div(class_="theme-options-dark"),
                             class_="theme-menu",
                         ),
@@ -277,10 +291,16 @@ def dashboard_ui(role: str) -> ui.Tag:
             ),
             class_="topbar",
         ),
-        ui.layout_sidebar(
-            ui.sidebar(build_sidebar(role), width="260px", open="desktop", title=None),
-            ui.output_ui("active_panel"), class_="app-body",
-        ), class_="app-shell",
+        # Plain flex layout (sidebar + content) instead of bslib's layout_sidebar:
+        # we control collapsing ourselves (see setupSidebarToggle in custom.js),
+        # so the menu can never get stuck hidden, and the content fills the page.
+        ui.div(
+            ui.tags.aside(build_sidebar(role), id="app-sidebar", class_="app-sidebar"),
+            ui.div(id="sidebar-backdrop", class_="app-sidebar-backdrop"),
+            ui.tags.main(ui.output_ui("active_panel"), class_="app-main"),
+            class_="app-body",
+        ),
+        class_="app-shell",
     )
 
 
@@ -289,50 +309,44 @@ def build_app_shell() -> ui.Tag:
 
 
 # =============================================================================
-# DIRECTION / LAYOUT MODE  (LTR ↔ RTL)
+# LANGUAGE + DIRECTION  (English / LTR  <->  Persian / RTL)
 # =============================================================================
-# The dashboard ships in LTR (left-to-right) by default.
+# Everything is driven by ONE setting: APP_LANG in i18n.py (or the APP_LANG
+# environment variable). Nothing needs to be commented / uncommented here.
 #
-# To switch to RTL (right-to-left, suitable for Persian / Arabic):
-#   1. Set APP_DIR_MODE = "rtl" below.
-#   2. Comment out the entire "LTR mode" app_ui block.
-#   3. Uncomment the entire "RTL mode" app_ui block.
+#   APP_LANG = "en"  -> English, dir="ltr", css/bootstrap.css
+#   APP_LANG = "fa"  -> Persian, dir="rtl", css/bootstrap.rtl.css
 #
-# Only ONE of the two app_ui blocks must be active at a time.
 # APP_DIR_MODE is exposed to JavaScript so the Font picker shows the correct
-# font list (static/fonts/ltr vs static/fonts/rtl).
+# font list (static/fonts/ltr vs static/fonts/rtl). window.APP_I18N carries the
+# few strings that the browser-side script (static/js/custom.js) needs.
 # =============================================================================
 
-APP_DIR_MODE = "ltr"  # change to "rtl" when activating the RTL block below
+APP_DIR_MODE = DIRECTION  # "ltr" or "rtl", derived from APP_LANG
 
-# --- LTR mode (default, ACTIVE) ---
+
+def _inline_json(data: dict) -> str:
+    """JSON that is safe to embed inside an inline <script> element."""
+    return json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+
+
 app_ui = ui.page_fillable(
-    ui.tags.link(rel="stylesheet", href="css/bootstrap.css"),
+    ui.tags.link(
+        rel="stylesheet",
+        href="css/bootstrap.rtl.css" if IS_RTL else "css/bootstrap.css",
+    ),
     ui.tags.link(rel="stylesheet", href="css/fonts.css"),
     ui.tags.style(read_asset("css", "styles.css")),
     ui.tags.script(read_asset("js", "custom.js")),
     ui.tags.script(
-        f"document.documentElement.setAttribute('dir','ltr');"
+        f"document.documentElement.setAttribute('dir','{DIRECTION}');"
+        f"document.documentElement.setAttribute('lang','{APP_LANG}');"
         f"window.APP_DIR_MODE='{APP_DIR_MODE}';"
+        f"window.APP_I18N={_inline_json(js_bundle())};"
     ),
     build_app_shell(),
     class_="app-shell-root",
 )
-
-# --- RTL mode (INACTIVE – uncomment this block and comment the LTR block above) ---
-# APP_DIR_MODE = "rtl"
-# app_ui = ui.page_fillable(
-#     ui.tags.link(rel="stylesheet", href="css/bootstrap.rtl.css"),
-#     ui.tags.link(rel="stylesheet", href="css/fonts.css"),
-#     ui.tags.style(read_asset("css", "styles.css")),
-#     ui.tags.script(read_asset("js", "custom.js")),
-#     ui.tags.script(
-#         f"document.documentElement.setAttribute('dir','rtl');"
-#         f"window.APP_DIR_MODE='{APP_DIR_MODE}';"
-#     ),
-#     build_app_shell(),
-#     class_="app-shell-root",
-# )
 
 
 def server(input, output, session):
@@ -406,12 +420,12 @@ def server(input, output, session):
         return ui.div(
             ui.tags.img(
                 src=src,
-                alt="CAPTCHA",
+                alt=t("login_captcha_alt"),
                 class_="login-captcha-image",
             ),
             ui.tags.button(
                 ui.tags.i(class_="bi bi-arrow-clockwise"),
-                " Refresh",
+                " " + t("login_refresh"),
                 type="button",
                 id="captcha_refresh_btn",
                 class_="btn btn-sm btn-outline-secondary login-captcha-refresh",
@@ -433,21 +447,19 @@ def server(input, output, session):
             password = input.login_password() or ""
             captcha_answer = input.login_captcha() or ""
         except (AttributeError, TypeError):
-            login_error.set("Invalid username or password, inactive account, or expired account.")
+            login_error.set(t("login_invalid"))
             _issue_captcha()
             return
 
         locked, remaining = is_login_locked(username)
         if locked:
-            login_error.set(
-                f"Too many failed attempts. Try again in {remaining} seconds."
-            )
+            login_error.set(t("login_locked", remaining=remaining))
             _issue_captcha()
             return
 
         if not verify_captcha(captcha_answer, captcha_hash(), captcha_expires()):
             register_login_failure(username)
-            login_error.set("Invalid security check. Please try again.")
+            login_error.set(t("login_captcha_invalid"))
             _issue_captcha()
             return
 
@@ -458,9 +470,7 @@ def server(input, output, session):
         user = authenticate(username, password)
         if user is None:
             register_login_failure(username)
-            login_error.set(
-                "Invalid username or password, inactive account, or expired account."
-            )
+            login_error.set(t("login_invalid"))
             _issue_captcha()
             return
 
@@ -527,7 +537,7 @@ def server(input, output, session):
         new_password = input.new_own_password()
         confirm_password = input.new_own_password_confirm()
         if new_password != confirm_password:
-            account_message.set("New password and confirmation do not match.")
+            account_message.set(t("account_mismatch"))
             return
 
         try:
@@ -536,7 +546,7 @@ def server(input, output, session):
                     input.current_password(),
                     new_password,
                 )
-            account_message.set("Password changed successfully.")
+            account_message.set(t("account_changed"))
         except (PermissionError, ValueError) as exc:
             account_message.set(str(exc))
 
@@ -551,7 +561,7 @@ def server(input, output, session):
         new_password = input.new_password()
         confirm_password = input.new_password_confirm()
         if new_password != confirm_password:
-            create_message.set("Password and confirmation do not match.")
+            create_message.set(t("users_create_mismatch"))
             return
 
         try:
@@ -571,12 +581,12 @@ def server(input, output, session):
                     role,
                     str(expire_date) if expire_date else None,
                 )
-            create_message.set("User created successfully.")
+            create_message.set(t("users_created"))
             users_refresh.set(users_refresh() + 1)
         except PermissionError:
-            create_message.set("Access denied: only Superadmin can create users.")
+            create_message.set(t("users_denied_create"))
         except sqlite3.IntegrityError:
-            create_message.set("This username already exists.")
+            create_message.set(t("users_exists"))
         except ValueError as exc:
             create_message.set(str(exc))
 
@@ -598,14 +608,14 @@ def server(input, output, session):
 
         if role == "superadmin":
             return ui.p(
-                "Superadmin accounts do not expire.",
+                t("superadmin_no_expiry"),
                 class_="form-text text-muted",
             )
 
         return ui.div(
             ui.input_checkbox(
                 "new_expire_enabled",
-                "Set an expiration date",
+                t("set_expiry"),
                 value=False,
             ),
             ui.output_ui("create_expiry_date_input"),
@@ -622,7 +632,7 @@ def server(input, output, session):
             return ui.div()
         return ui.input_date(
             "new_expire_date",
-            "Expiration date",
+            t("expiry_date"),
         )
 
 
@@ -638,47 +648,47 @@ def server(input, output, session):
             ui.div(
                 ui.input_text(
                     "edit_username",
-                    "Username",
+                    t("username"),
                     value=selected["username"],
                 ),
                 ui.input_select(
                     "edit_role",
-                    "Access level",
+                    t("access_level"),
                     {
-                        "guest": "Guest",
-                        "user": "User",
-                        "admin": "Admin",
-                        "superadmin": "Superadmin",
+                        "guest": role_label("guest"),
+                        "user": role_label("user"),
+                        "admin": role_label("admin"),
+                        "superadmin": role_label("superadmin"),
                     },
                     selected=selected["role"],
                 ),
                 ui.output_ui("edit_expiry_field"),
                 ui.input_checkbox(
                     "edit_is_active",
-                    "Active account",
+                    t("edit_active"),
                     value=bool(selected["is_active"]),
                 ),
                 ui.input_password(
                     "edit_password",
-                    "New password (leave blank to keep current password)",
+                    t("edit_new_password"),
                 ),
                 ui.input_password(
                     "edit_password_confirm",
-                    "Confirm new password",
+                    t("confirm_new_password"),
                 ),
                 ui.output_ui("edit_modal_message_ui"),
                 class_="user-edit-modal-body",
             ),
-            title=f'Edit user: {selected["username"]}',
+            title=t("edit_title", username=selected["username"]),
             easy_close=True,
             footer=ui.div(
                 ui.input_action_button(
-                    "save_user", "Save changes", class_="btn btn-primary"
+                    "save_user", t("edit_save"), class_="btn btn-primary"
                 ),
                 ui.input_action_button(
-                    "delete_user", "Delete user", class_="btn btn-danger ms-2"
+                    "delete_user", t("edit_delete"), class_="btn btn-danger ms-2"
                 ),
-                ui.modal_button("Cancel", class_="btn btn-secondary ms-2"),
+                ui.modal_button(t("edit_cancel"), class_="btn btn-secondary ms-2"),
             ),
             size="m",
         )
@@ -708,7 +718,7 @@ def server(input, output, session):
             role = selected["role"]
         if role == "superadmin":
             return ui.p(
-                "Superadmin accounts do not expire.",
+                t("superadmin_no_expiry"),
                 class_="form-text text-muted",
             )
 
@@ -716,7 +726,7 @@ def server(input, output, session):
         return ui.div(
             ui.input_checkbox(
                 "edit_expire_enabled",
-                "Set an expiration date",
+                t("set_expiry"),
                 value=has_expiry,
             ),
             ui.output_ui("edit_expiry_date_input"),
@@ -741,7 +751,7 @@ def server(input, output, session):
         value = selected["expire_date"] if selected and selected.get("expire_date") else None
         return ui.input_date(
             "edit_expire_date",
-            "Expiration date",
+            t("expiry_date"),
             value=value,
         )
 
@@ -765,7 +775,7 @@ def server(input, output, session):
             return
         selected = _load_user_row(selected_id, current)
         if selected is None:
-            create_message.set("User not found.")
+            create_message.set(t("users_not_found"))
             return
         editing_user_id.set(selected_id)
         edit_modal_message.set("")
@@ -785,12 +795,12 @@ def server(input, output, session):
         try:
             with user_context(current):
                 delete_user(selected_id)
-            create_message.set("User deleted successfully.")
+            create_message.set(t("users_deleted"))
             users_refresh.set(users_refresh() + 1)
             editing_user_id.set(None)
             ui.modal_remove()
         except PermissionError:
-            create_message.set("Access denied: only Superadmin can delete users.")
+            create_message.set(t("users_denied_delete"))
         except ValueError as exc:
             create_message.set(str(exc))
 
@@ -809,7 +819,7 @@ def server(input, output, session):
         new_password = input.edit_password()
         confirm_password = input.edit_password_confirm()
         if new_password and new_password != confirm_password:
-            edit_modal_message.set("New password and confirmation do not match.")
+            edit_modal_message.set(t("edit_mismatch"))
             return
 
         try:
@@ -848,15 +858,15 @@ def server(input, output, session):
                     return
                 logged_in_user.set(dict(current))
 
-            create_message.set("User updated successfully.")
+            create_message.set(t("users_updated"))
             edit_modal_message.set("")
             users_refresh.set(users_refresh() + 1)
             ui.modal_remove()
             editing_user_id.set(None)
         except PermissionError:
-            edit_modal_message.set("Access denied: only Superadmin can edit users.")
+            edit_modal_message.set(t("users_denied_edit"))
         except sqlite3.IntegrityError:
-            edit_modal_message.set("This username already exists.")
+            edit_modal_message.set(t("users_exists"))
         except ValueError as exc:
             edit_modal_message.set(str(exc))
 
@@ -873,12 +883,12 @@ def server(input, output, session):
         try:
             with user_context(current):
                 delete_user(int(selected_id))
-            create_message.set("User deleted successfully.")
+            create_message.set(t("users_deleted"))
             users_refresh.set(users_refresh() + 1)
             editing_user_id.set(None)
             ui.modal_remove()
         except PermissionError:
-            edit_modal_message.set("Access denied: only Superadmin can delete users.")
+            edit_modal_message.set(t("users_denied_delete"))
         except ValueError as exc:
             edit_modal_message.set(str(exc))
 
@@ -898,26 +908,26 @@ def server(input, output, session):
             rows = list_users()
 
         header = ui.tags.tr(
-            ui.tags.th("Actions"),
-            ui.tags.th("ID"),
-            ui.tags.th("Username"),
-            ui.tags.th("Role"),
-            ui.tags.th("Active"),
-            ui.tags.th("Expires"),
-            ui.tags.th("Created"),
+            ui.tags.th(t("users_col_actions")),
+            ui.tags.th(t("users_col_id")),
+            ui.tags.th(t("users_col_username")),
+            ui.tags.th(t("users_col_role")),
+            ui.tags.th(t("users_col_active")),
+            ui.tags.th(t("users_col_expires")),
+            ui.tags.th(t("users_col_created")),
         )
         body = []
         for row in rows:
             actions = ui.tags.td(
                 ui.tags.button(
-                    "Change",
+                    t("users_change"),
                     type="button",
                     class_="btn btn-sm btn-primary user-action-edit",
                     data_user_id=str(row["id"]),
                 ),
                 " ",
                 ui.tags.button(
-                    "Delete",
+                    t("users_delete"),
                     type="button",
                     class_="btn btn-sm btn-danger user-action-delete",
                     data_user_id=str(row["id"]),
@@ -930,9 +940,9 @@ def server(input, output, session):
                     actions,
                     ui.tags.td(str(row["id"])),
                     ui.tags.td(row["username"]),
-                    ui.tags.td(row["role"]),
-                    ui.tags.td("Yes" if row["is_active"] else "No"),
-                    ui.tags.td(row["expire_date"] or "Never"),
+                    ui.tags.td(role_label(row["role"])),
+                    ui.tags.td(t("yes") if row["is_active"] else t("no")),
+                    ui.tags.td(row["expire_date"] or t("never")),
                     ui.tags.td(row["created_at"]),
                 )
             )

@@ -9,6 +9,7 @@ import os
 import random
 import secrets
 import time
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -16,6 +17,36 @@ from PIL import Image, ImageDraw, ImageFont
 CAPTCHA_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 CAPTCHA_LENGTH = 5
 CAPTCHA_TTL_SECONDS = 300  # 5 minutes
+
+# Size of the image as it is SHOWN in the browser (CSS pixels). Keep in sync
+# with .login-captcha-image in static/css/styles.css.
+CAPTCHA_WIDTH, CAPTCHA_HEIGHT = 230, 76
+
+# A font file ships with the project so the letters are large and identical on
+# every OS. (Docker "slim" images and Windows have no DejaVu; without a font
+# Pillow would fall back to a tiny 10px bitmap font -- the old "too small" bug.)
+_BUNDLED_FONT = Path(__file__).resolve().parent / "fonts" / "DejaVuSans-Bold.ttf"
+_FONT_CANDIDATES = (
+    str(_BUNDLED_FONT),
+    "DejaVuSans-Bold.ttf",
+    "arialbd.ttf",
+    "Arial Bold.ttf",
+    "LiberationSans-Bold.ttf",
+    "Helvetica.ttc",
+)
+
+
+def _load_font(size: int) -> ImageFont.ImageFont:
+    """Return a scalable bold font of ``size`` pixels (never the tiny default)."""
+    for candidate in _FONT_CANDIDATES:
+        try:
+            return ImageFont.truetype(candidate, size)
+        except OSError:
+            continue
+    try:  # Pillow >= 10.1 can scale its built-in font.
+        return ImageFont.load_default(size=size)
+    except TypeError:  # very old Pillow: last resort
+        return ImageFont.load_default()
 
 # Server-side secret for hashing answers (rotated each process start is fine).
 _CAPTCHA_SECRET = os.urandom(32)
@@ -50,43 +81,40 @@ def generate_captcha() -> tuple[str, str, float]:
     answer_hash = _hash_answer(text)
     expires_at = time.time() + CAPTCHA_TTL_SECONDS
 
-    width, height = 180, 56
+    # Draw at 2x and let the browser scale it down: crisp on high-DPI screens.
+    scale = 2
+    width, height = CAPTCHA_WIDTH * scale, CAPTCHA_HEIGHT * scale
     image = Image.new("RGB", (width, height), (248, 250, 252))
     draw = ImageDraw.Draw(image)
 
-    # Light background noise dots.
-    for _ in range(40):
+    # Light background noise dots (kept pale so the letters stay readable).
+    for _ in range(60):
         x, y = random.randint(0, width - 1), random.randint(0, height - 1)
-        draw.point((x, y), fill=(random.randint(160, 200),) * 3)
+        draw.point((x, y), fill=(random.randint(170, 210),) * 3)
 
-    # A few interference lines.
+    font = _load_font(44 * scale)
+
+    # Interference lines are drawn BEFORE the letters so they never cover them.
     for _ in range(3):
         draw.line(
             (
-                random.randint(0, width // 3),
+                random.randint(0, width // 4),
                 random.randint(0, height - 1),
                 random.randint(width // 2, width - 1),
                 random.randint(0, height - 1),
             ),
-            fill=(random.randint(140, 180),) * 3,
-            width=1,
+            fill=(random.randint(170, 200),) * 3,
+            width=2,
         )
 
-    try:
-        font = ImageFont.truetype("DejaVuSans-Bold.ttf", 28)
-    except OSError:
-        try:
-            font = ImageFont.truetype("DejaVuSans.ttf", 28)
-        except OSError:
-            font = ImageFont.load_default()
-
-    # Draw each character with slight position jitter.
-    x = 14
-    for ch in text:
-        y = random.randint(8, 16)
-        # Pillow >=10 removed ImageDraw.textsize; use textbbox / default font metrics.
+    # Spread the characters evenly over the image, with a little jitter.
+    slot = width / (len(text) + 0.4)
+    for index, ch in enumerate(text):
+        left, top, right, bottom = draw.textbbox((0, 0), ch, font=font)
+        char_w, char_h = right - left, bottom - top
+        x = slot * (index + 0.35) + (slot - char_w) / 2 - left + random.randint(-3, 3)
+        y = (height - char_h) / 2 - top + random.randint(-6 * scale, 6 * scale)
         draw.text((x, y), ch, font=font, fill=(30, 41, 59))
-        x += 30 + random.randint(-2, 4)
 
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
