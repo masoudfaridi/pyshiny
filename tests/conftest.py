@@ -12,6 +12,15 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
+@pytest.fixture(autouse=True)
+def isolated_audit_db(tmp_path, monkeypatch):
+    """Every test writes audit events to its own temp file, never db/audit.db."""
+    from auth import audit
+
+    monkeypatch.setattr(audit, "AUDIT_DB_PATH", tmp_path / "audit.db")
+    yield audit
+
+
 @pytest.fixture()
 def isolated_db(tmp_path, monkeypatch):
     """Point auth.core.DB_PATH at a fresh temp database and seed defaults.

@@ -1,5 +1,6 @@
 """Authentication package: password hashing, account expiration, CAPTCHA, and RBAC."""
 
+from auth import audit
 from auth.captcha import generate_captcha, verify_captcha
 from auth.core import (
     LOGIN_LOCKOUT_SECONDS,
@@ -18,6 +19,7 @@ from auth.core import (
     has_role,
     init_db,
     is_login_locked,
+    list_audit_events,
     list_users,
     refresh_session_user,
     register_login_failure,
@@ -31,6 +33,7 @@ from auth.core import (
 )
 
 __all__ = [
+    "audit",
     "LOGIN_LOCKOUT_SECONDS",
     "LOGIN_MAX_FAILURES",
     "ROLE_LEVELS",
@@ -48,6 +51,7 @@ __all__ = [
     "has_role",
     "init_db",
     "is_login_locked",
+    "list_audit_events",
     "list_users",
     "refresh_session_user",
     "register_login_failure",

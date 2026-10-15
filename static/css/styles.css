@@ -260,6 +260,15 @@ body {
 .users-table th, .users-table td { padding:.7rem .8rem; border-bottom:1px solid var(--border); text-align:start; }
 .users-table th { background:var(--surface-2); }
 
+/* Logs tab: filter bar (one aligned flex row; wraps on narrow screens) */
+.log-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:.75rem 1rem; }
+.log-filters .log-field { flex:1 1 170px; min-width:150px; }
+.log-filters .log-field-narrow { flex:0 1 120px; min-width:100px; }
+.log-filters .shiny-input-container { width:100%; max-width:none; margin-bottom:0; }
+.log-filters label { white-space:nowrap; margin-bottom:.35rem; }
+.log-filters .log-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; }
+.log-filters .log-actions .btn { white-space:nowrap; margin:0; }
+
 /* Dark-mode surfaces used by authentication and user management. */
 [data-theme^="dark"] { --card-bg: #0f172a; --surface-2: rgba(255,255,255,.06); }
 

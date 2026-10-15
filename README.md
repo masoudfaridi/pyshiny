@@ -54,6 +54,7 @@ pyshiny/
     ├── tab_07.py              # Role-gated buttons (superadmin/admin/user/guest)
     ├── tab_account.py         # Self-service account and password management
     ├── tab_users.py           # Superadmin-only user management
+    ├── tab_logs.py            # Superadmin-only audit log viewer (last tab); see docs/audit-log.md
     ├── HOW_TO_ADD_A_TAB.md    # Every place to edit when adding a tab
     ├── MODULES.md             # How Shiny modules work (the technique used by the tabs)
     └── examples/              # 15 copy-ready module examples (ex01 ... ex15) + README

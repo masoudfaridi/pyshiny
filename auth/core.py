@@ -14,6 +14,7 @@ from datetime import date
 from functools import wraps
 from pathlib import Path
 
+from auth import audit
 from i18n import t
 
 # Project root is one level above this package (auth/).
@@ -182,6 +183,13 @@ def require_role(required_role: str):
         @wraps(fn)
         def wrapper(*args, **kwargs):
             if not has_role(required_role):
+                audit.log_event(
+                    "security",
+                    "access_denied",
+                    user=current_user(),
+                    severity="warning",
+                    detail={"function": fn.__name__, "required_role": required_role},
+                )
                 raise PermissionError(
                     f"Role '{required_role}' is required for {fn.__name__}; "
                     f"current role is '{current_role()}'."
@@ -287,17 +295,22 @@ def is_login_locked(username: str) -> tuple[bool, int]:
         return True, max(remaining, 1)
 
 
-def register_login_failure(username: str) -> None:
-    """Record a failed login attempt for rate limiting."""
+def register_login_failure(username: str) -> bool:
+    """Record a failed login attempt for rate limiting.
+
+    Returns True only when this failure is the one that locks the account
+    (so the caller can log the lockout once, not on every later attempt).
+    """
     key = (username or "").strip().lower()
     if not key:
-        return
+        return False
     with _login_lock:
         stamps = _login_failures.setdefault(key, [])
         stamps.append(time.time())
         # Keep the window bounded.
         cutoff = time.time() - LOGIN_LOCKOUT_SECONDS
         _login_failures[key] = [t for t in stamps if t >= cutoff]
+        return len(_login_failures[key]) == LOGIN_MAX_FAILURES
 
 
 def clear_login_failures(username: str) -> None:
@@ -355,6 +368,10 @@ def change_own_password(current_password: str, new_password: str) -> None:
             (current["id"],),
         ).fetchone()
         if row is None or not _verify_password(current_password, row[0]):
+            audit.log_event(
+                "auth", "password_change_failed", user=current, severity="warning",
+                detail={"reason": "wrong_current_password"},
+            )
             raise ValueError(t("err_current_password"))
 
         con.execute(
@@ -362,6 +379,7 @@ def change_own_password(current_password: str, new_password: str) -> None:
             (_hash_password(new_password), current["id"]),
         )
         con.commit()
+    audit.log_event("auth", "password_changed", user=current)
 
 
 @superadmin
@@ -385,6 +403,13 @@ def create_user(
             (username, _hash_password(password), role, expire_date),
         )
         con.commit()
+    audit.log_event(
+        "security",
+        "user_created",
+        user=current_user(),
+        severity="critical" if role == "superadmin" else "info",
+        detail={"target": username, "role": role, "expire_date": expire_date},
+    )
 
 
 @superadmin
@@ -419,7 +444,8 @@ def update_user(
 
     with sqlite3.connect(DB_PATH) as con:
         current = con.execute(
-            "SELECT role, is_active FROM users WHERE id=?", (user_id,)
+            "SELECT role, is_active, username, expire_date FROM users WHERE id=?",
+            (user_id,),
         ).fetchone()
         if current is None:
             raise ValueError(t("err_user_not_found"))
@@ -453,6 +479,32 @@ def update_user(
             )
         con.commit()
 
+    changes = {}
+    for field, old, new in (
+        ("username", current[2], username),
+        ("role", current[0], role),
+        ("is_active", int(current[1]), int(is_active)),
+        ("expire_date", current[3], expire_date),
+    ):
+        if old != new:
+            changes[field] = [old, new]
+    if new_password:
+        changes["password_reset"] = True
+    if changes:
+        role_changed = "role" in changes
+        touches_superadmin = "superadmin" in (current[0], role)
+        audit.log_event(
+            "security",
+            "role_changed" if role_changed else "user_updated",
+            user=current_user(),
+            severity=(
+                "critical"
+                if role_changed and touches_superadmin
+                else "warning" if role_changed or "password_reset" in changes else "info"
+            ),
+            detail={"target_id": int(user_id), "target": current[2], "changes": changes},
+        )
+
 
 @superadmin
 def delete_user(user_id: int) -> None:
@@ -464,7 +516,7 @@ def delete_user(user_id: int) -> None:
 
     with sqlite3.connect(DB_PATH) as con:
         row = con.execute(
-            "SELECT role, is_active FROM users WHERE id=?", (user_id,)
+            "SELECT role, is_active, username FROM users WHERE id=?", (user_id,)
         ).fetchone()
         if row is None:
             raise ValueError(t("err_user_not_found"))
@@ -478,6 +530,26 @@ def delete_user(user_id: int) -> None:
 
         con.execute("DELETE FROM users WHERE id=?", (user_id,))
         con.commit()
+    audit.log_event(
+        "security",
+        "user_deleted",
+        user=current,
+        severity="critical" if row[0] == "superadmin" else "warning",
+        detail={"target_id": int(user_id), "target": row[2], "role": row[0]},
+    )
+
+
+@superadmin
+def list_audit_events(
+    category: str | None = None,
+    severity: str | None = None,
+    username: str | None = None,
+    limit: int = 200,
+) -> list[dict]:
+    """Return audit events, newest first. Only Superadmin users may call this."""
+    return audit.query_events(
+        category=category, severity=severity, username=username, limit=limit
+    )
 
 
 init_db()

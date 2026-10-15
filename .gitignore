@@ -2,6 +2,9 @@
 # Never ship a pre-seeded db file: it can carry stale password hashes and
 # lets the four default accounts sit around indefinitely if a copy leaks.
 db/auth.db
+db/audit.db
+db/audit.db-wal
+db/audit.db-shm
 
 # Local Docker environment (created from .env.example by bootstrap)
 docker/.env

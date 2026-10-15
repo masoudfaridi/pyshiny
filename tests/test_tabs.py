@@ -15,6 +15,7 @@ TAB_MODULES = [
     "tabs.tab_07",
     "tabs.tab_account",
     "tabs.tab_users",
+    "tabs.tab_logs",
 ]
 
 REQUIRED_ATTRS = ("NAV_ID", "NAV_LABEL", "NAV_ICON", "NAV_GROUP", "NAV_MIN_ROLE")
@@ -69,6 +70,11 @@ class TestTabUniqueness:
     def test_users_tab_superadmin_only(self):
         mod = importlib.import_module("tabs.tab_users")
         assert mod.NAV_MIN_ROLE == "superadmin"
+
+    def test_logs_tab_superadmin_only_and_last(self):
+        mod = importlib.import_module("tabs.tab_logs")
+        assert mod.NAV_MIN_ROLE == "superadmin"
+        assert TAB_MODULES[-1] == "tabs.tab_logs"
 
     def test_default_tab_is_guest_accessible(self):
         # DEFAULT_TAB_ID in app is tab_04; it must be guest-visible

@@ -37,6 +37,7 @@ Adding a new tab
 """
 
 import json
+import time
 from datetime import date
 from pathlib import Path
 
@@ -44,6 +45,9 @@ from shiny import App, reactive, render, ui
 import sqlite3
 
 from auth import (
+    LOGIN_LOCKOUT_SECONDS,
+    ROLE_LEVELS,
+    audit,
     authenticate,
     change_own_password,
     clear_login_failures,
@@ -52,6 +56,7 @@ from auth import (
     current_user,
     delete_user,
     generate_captcha,
+    get_user_by_id,
     is_login_locked,
     list_users,
     refresh_session_user,
@@ -62,15 +67,18 @@ from auth import (
 )
 
 from i18n import APP_LANG, DIRECTION, IS_RTL, js_bundle, role_label, t
-from tabs import tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_account, tab_users
+from tabs import tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_account, tab_users, tab_logs
 
 APP_DIR = Path(__file__).parent
 STATIC_DIR = APP_DIR / "static"
 
 # Order here = order shown in the sidebar, top to bottom.
-TABS = [tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_account, tab_users]
+# tab_logs is deliberately the LAST entry (superadmin only).
+TABS = [tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_account, tab_users, tab_logs]
 TAB_LOOKUP = {tab.NAV_ID: tab for tab in TABS}
 DEFAULT_TAB_ID = "tab_04"  # guest-accessible default so lower roles land on a valid page
+
+_last_purge = 0.0  # audit-log retention purge runs at most once an hour
 
 # A "group" is not a tab by itself -- it's just a collapsible header in the
 # sidebar for every tab whose NAV_GROUP matches its key.
@@ -362,6 +370,68 @@ def server(input, output, session):
     captcha_image = reactive.Value("")
     captcha_nonce = reactive.Value(0)
 
+    # --- audit log helpers (see auth/audit.py) -------------------------------
+    global _last_purge
+    if time.time() - _last_purge > 3600:
+        _last_purge = time.time()
+        audit.purge_old()
+
+    meta = audit.session_meta(session)  # {"sid", "ip", "ua"}
+    state = {"login_at": None, "last_tab": None}  # per-session, not reactive
+
+    def _log(category, event, user=None, *, username=None, severity="info", detail=None):
+        audit.log_event(
+            category,
+            event,
+            user=user,
+            username=username,
+            severity=severity,
+            detail=detail,
+            session_id=meta["sid"],
+            ip=meta["ip"],
+            user_agent=meta["ua"],
+        )
+
+    def _session_seconds():
+        started = state["login_at"]
+        return round(time.monotonic() - started) if started is not None else None
+
+    def _revoke_reason(user) -> str:
+        try:
+            row = get_user_by_id(int(user["id"]))
+        except Exception:
+            return "unknown"
+        if row is None:
+            return "account_deleted"
+        if not row.get("is_active"):
+            return "account_disabled"
+        return "account_expired"
+
+    def _note_login_failure(username, reason):
+        just_locked = register_login_failure(username)
+        _log(
+            "auth", "login_failed", username=username,
+            severity="warning", detail={"reason": reason},
+        )
+        if just_locked:
+            _log(
+                "security", "account_locked", username=username, severity="critical",
+                detail={"lock_seconds": LOGIN_LOCKOUT_SECONDS},
+            )
+
+    def _on_ended():
+        # Browser closed / connection lost while signed in.
+        try:
+            with reactive.isolate():
+                person = logged_in_user()
+            if person:
+                _log("navigation", "session_ended", person,
+                     detail={"duration_s": _session_seconds()})
+        except Exception:
+            pass
+
+    session.on_ended(_on_ended)
+
     # Register content-tab modules once (namespaces tab_01-..., tab_02-..., ...).
     # This is the Python equivalent of calling moduleServer() for each tab in R.
     # Must NOT run inside login or active_panel.
@@ -387,8 +457,14 @@ def server(input, output, session):
         fresh = refresh_session_user(user)
         if fresh is None:
             if user is not None:
+                _log("security", "session_revoked", user, severity="warning",
+                     detail={"reason": _revoke_reason(user)})
+                state["login_at"] = None
+                state["last_tab"] = None
                 logged_in_user.set(None)
             return None
+        # Attach session id / IP / UA so decorator denials (auth.core) can log them.
+        fresh = {**fresh, **{k: v for k, v in meta.items() if v}}
         if (
             fresh["username"] != user.get("username")
             or fresh["role"] != user.get("role")
@@ -402,6 +478,7 @@ def server(input, output, session):
     # reactive value, so each click re-checks the account in SQLite. It must be
     # registered after _ensure_valid_session is defined, and only once.
     tab_07.server(_ensure_valid_session)
+    tab_logs.server(_ensure_valid_session)
 
     @reactive.effect
     def _ensure_captcha_ready():
@@ -458,12 +535,14 @@ def server(input, output, session):
 
         locked, remaining = is_login_locked(username)
         if locked:
+            _log("security", "login_blocked_locked", username=username,
+                 severity="warning", detail={"remaining_s": remaining})
             login_error.set(t("login_locked", remaining=remaining))
             _issue_captcha()
             return
 
         if not verify_captcha(captcha_answer, captcha_hash(), captcha_expires()):
-            register_login_failure(username)
+            _note_login_failure(username, "captcha")
             login_error.set(t("login_captcha_invalid"))
             _issue_captcha()
             return
@@ -474,13 +553,16 @@ def server(input, output, session):
 
         user = authenticate(username, password)
         if user is None:
-            register_login_failure(username)
+            _note_login_failure(username, "bad_credentials")
             login_error.set(t("login_invalid"))
             _issue_captcha()
             return
 
         clear_login_failures(username)
         login_error.set("")
+        state["login_at"] = time.monotonic()
+        state["last_tab"] = None
+        _log("auth", "login_success", user)
         logged_in_user.set(user)
         _issue_captcha()
 
@@ -500,6 +582,11 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.logout_button)
     def _logout():
+        person = logged_in_user()
+        if person:
+            _log("auth", "logout", person, detail={"duration_s": _session_seconds()})
+        state["login_at"] = None
+        state["last_tab"] = None
         logged_in_user.set(None)
         login_error.set("")
         create_message.set("")
@@ -530,6 +617,29 @@ def server(input, output, session):
                     break
         with user_context(user):
             return tab.panel()
+
+    @reactive.effect
+    @reactive.event(input.sidebar_nav)
+    def _log_navigation():
+        # One row per tab change (consecutive repeats of the same tab are skipped).
+        # A forged / not-permitted tab id is a security event, not navigation.
+        current = _ensure_valid_session()
+        if not current:
+            return
+        nav_id = input.sidebar_nav()
+        tab = TAB_LOOKUP.get(nav_id)
+        if tab is None:
+            _log("security", "unknown_tab_request", current, severity="warning",
+                 detail={"tab": nav_id})
+            return
+        required = getattr(tab, "NAV_MIN_ROLE", "guest")
+        if ROLE_LEVELS.get(current["role"], -1) < ROLE_LEVELS.get(required, 0):
+            _log("security", "unauthorized_tab_request", current, severity="warning",
+                 detail={"tab": nav_id, "required_role": required})
+            return
+        if state["last_tab"] != nav_id:
+            state["last_tab"] = nav_id
+            _log("navigation", "tab_opened", current, detail={"tab": nav_id})
 
     @reactive.effect
     @reactive.event(input.change_password_button)
