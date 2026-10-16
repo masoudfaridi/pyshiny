@@ -14,6 +14,12 @@ Protection uses BOTH layers:
 The user is passed in as a function (``_ensure_valid_session`` from app.py) that
 re-checks the account in SQLite on every render / download.
 
+CSV export: ``render.download`` is deprecated in recent Shiny releases and the
+replacement API differs between versions, so the export is a plain
+``<a download href="data:text/csv...">`` link produced by ``render.ui``. The CSV
+text is built on the server through the same ``@superadmin``-guarded read as the
+tables, so a denied / signed-out request gets no link at all.
+
 Cell values are plain strings, so htmltools escapes them (attacker-controlled
 text such as a typed login name cannot inject HTML). The CSV export prefixes
 cells that start with ``= + - @`` so spreadsheets do not run them as formulas.
@@ -25,6 +31,7 @@ import csv
 import io
 import json
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 from shiny import module, reactive, render, ui
 
@@ -161,6 +168,11 @@ def _rows_to_csv(rows: list[dict]) -> str:
     return out.getvalue()
 
 
+def _csv_href(csv_text: str) -> str:
+    """Data URI for a CSV download link (UTF-8 BOM so Excel reads non-ASCII)."""
+    return "data:text/csv;charset=utf-8," + quote("\ufeff" + csv_text, safe="")
+
+
 def _limit_value(raw) -> int:
     try:
         return max(1, min(int(raw), 1000))
@@ -208,9 +220,7 @@ def _ui():
                 ui.input_action_button(
                     "refresh_btn", _tx("refresh"), class_="btn btn-primary"
                 ),
-                ui.download_button(
-                    "download_csv", _tx("download"), class_="btn btn-secondary"
-                ),
+                ui.output_ui("download_link", inline=True),
                 class_="log-actions",
             ),
             class_="user-form-card log-filters mb-3",
@@ -300,14 +310,19 @@ def _server(input, output, session, get_session_user):
     def table_security():
         return _table("security")
 
-    @render.download(
-        filename=lambda: f"audit-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.csv"
-    )
-    def download_csv():
-        with reactive.isolate():  # download handlers are not reactive contexts
-            rows, error = _fetch(input.cat() or "auth")
-        # A denied / signed-out request downloads an empty file, never the log.
-        yield _rows_to_csv(rows if not error else [])
+    @render.ui
+    def download_link():
+        category = input.cat() or "auth"
+        rows, error = _fetch(category)
+        if error or not rows:
+            return ui.tags.span()  # nothing to export (or not allowed): no link
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        return ui.tags.a(
+            _tx("download"),
+            href=_csv_href(_rows_to_csv(rows)),
+            download=f"audit-{category}-{stamp}.csv",
+            class_="btn btn-secondary",
+        )
 
 
 def panel():

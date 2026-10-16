@@ -224,6 +224,16 @@ class TestLogsTabHelpers:
         assert "'=HYPERLINK" in text and "'+cmd" in text
         assert "reason=bad_credentials" in text
 
+    def test_csv_href_round_trips(self):
+        from urllib.parse import unquote
+
+        from tabs import tab_logs
+
+        href = tab_logs._csv_href("a,b\nمهمان,=x\n")
+        assert href.startswith("data:text/csv;charset=utf-8,")
+        assert unquote(href.split(",", 1)[1]) == "\ufeffa,b\nمهمان,=x\n"
+        assert "\n" not in href and " " not in href
+
     def test_limit_value(self):
         from tabs import tab_logs
 
