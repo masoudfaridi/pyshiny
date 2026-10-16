@@ -352,6 +352,23 @@ def authenticate(username: str, password: str) -> dict | None:
 
 
 @guest
+@guest
+def verify_own_password(password: str) -> bool:
+    """True if ``password`` is the password of the CURRENT (signed-in) user.
+
+    Used by ``@confirm_with_password``. It can only ever check the account of
+    the user in ``user_context`` -- there is no way to test another account's
+    password through it. Failed attempts are rate limited by the caller.
+    """
+    current = current_user()
+    with sqlite3.connect(DB_PATH) as con:
+        row = con.execute(
+            "SELECT password_hash FROM users WHERE id=? AND is_active=1",
+            (current["id"],),
+        ).fetchone()
+    return bool(password) and row is not None and _verify_password(password, row[0])
+
+
 def change_own_password(current_password: str, new_password: str) -> None:
     """Change the password of the currently authenticated user."""
     current = current_user()

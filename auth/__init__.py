@@ -34,10 +34,14 @@ from auth.core import (
     user_context,
     validate_password,
     validate_username,
+    verify_own_password,
 )
+from auth.confirm import confirm_with_password
 
 __all__ = [
     "audit",
+    "confirm_with_password",
+    "verify_own_password",
     "LOGIN_LOCKOUT_SECONDS",
     "LOGIN_MAX_FAILURES",
     "ROLE_LEVELS",

@@ -29,7 +29,9 @@ pyshiny/
 ├── auth/
 │   ├── __init__.py            # Public auth API re-exports
 │   ├── core.py                # Authentication, password hashing, expiration, RBAC
-│   └── captcha.py             # Offline image CAPTCHA generator
+│   ├── captcha.py             # Offline image CAPTCHA generator
+│   ├── audit.py               # Audit log storage (db/audit.db); see docs/audit-log.md
+│   └── confirm.py             # @confirm_with_password; see docs/confirm-with-password.md
 ├── db/                        # SQLite database (created on first run)
 │                              #   auth.db is NEVER shipped – see .gitignore
 ├── docker/

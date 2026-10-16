@@ -51,6 +51,7 @@ ALWAYS_LOG_EVENTS = frozenset(
     {
         "user_created", "user_updated", "role_changed", "user_deleted",
         "audit_settings_changed", "audit_cleared",
+        "reauth_failed", "reauth_blocked_locked", "sensitive_action_confirmed",
     }
 )
 

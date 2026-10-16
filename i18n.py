@@ -199,6 +199,19 @@ STRINGS: dict[str, dict[str, str]] = {
         "err_last_superadmin": "At least one active Superadmin must remain.",
         "err_delete_self": "You cannot delete the account you are currently using.",
         "err_delete_last_superadmin": "The last active Superadmin cannot be deleted.",
+
+        # ---- Password re-confirmation (auth/confirm.py: @confirm_with_password) ----
+        "reauth_title": "Confirm action",
+        "reauth_continue": "Continue",
+        "reauth_cancel": "Cancel",
+        "reauth_password_intro": "This action is protected. Enter your account password to continue.",
+        "reauth_password_label": "Your password",
+        "reauth_submit": "Confirm",
+        "reauth_wrong_password": "Incorrect password. Please try again.",
+        "reauth_empty_password": "Please enter your password.",
+        "reauth_expired": "This confirmation has expired. Please click the button again.",
+        "reauth_signin": "Your session is no longer valid. Please sign in again.",
+        "reauth_denied": "You do not have access to this section.",
     },
 
     # ------------------------------------------------------------------ Persian
@@ -359,6 +372,19 @@ STRINGS: dict[str, dict[str, str]] = {
         "err_last_superadmin": "دست‌کم یک مدیر کل فعال باید باقی بماند.",
         "err_delete_self": "نمی‌توانید حسابی را که با آن وارد شده‌اید حذف کنید.",
         "err_delete_last_superadmin": "آخرین مدیر کل فعال را نمی‌توان حذف کرد.",
+
+        # ---- تأیید مجدد با رمز عبور (auth/confirm.py: @confirm_with_password) ----
+        "reauth_title": "تأیید عملیات",
+        "reauth_continue": "ادامه",
+        "reauth_cancel": "انصراف",
+        "reauth_password_intro": "این عملیات محافظت‌شده است. برای ادامه، رمز عبور حساب خود را وارد کنید.",
+        "reauth_password_label": "رمز عبور شما",
+        "reauth_submit": "تأیید",
+        "reauth_wrong_password": "رمز عبور نادرست است. لطفاً دوباره تلاش کنید.",
+        "reauth_empty_password": "لطفاً رمز عبور را وارد کنید.",
+        "reauth_expired": "مهلت این تأیید تمام شد. لطفاً دوباره روی دکمه کلیک کنید.",
+        "reauth_signin": "نشست شما دیگر معتبر نیست. لطفاً دوباره وارد شوید.",
+        "reauth_denied": "دسترسی به این بخش برای شما مقدور نیست.",
     },
 }
 

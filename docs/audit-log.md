@@ -10,7 +10,7 @@ Only a superadmin can read it: sidebar tab **Logs** (last tab).
 |----------|--------|
 | `auth` | `login_success`, `login_failed` (reason: `bad_credentials` / `captcha`), `logout`, `password_changed`, `password_change_failed` |
 | `navigation` | `tab_opened` (one row per tab change), `session_ended` (browser closed while signed in) |
-| `security` | `access_denied` (any `@superadmin/@admin/@user/@guest` refusal), `unauthorized_tab_request`, `unknown_tab_request`, `account_locked`, `login_blocked_locked`, `session_revoked` (account deleted / disabled / expired), `user_created`, `user_updated`, `role_changed`, `user_deleted`, `audit_settings_changed`, `audit_cleared` |
+| `security` | `access_denied` (any `@superadmin/@admin/@user/@guest` refusal), `unauthorized_tab_request`, `unknown_tab_request`, `account_locked`, `login_blocked_locked`, `session_revoked` (account deleted / disabled / expired), `user_created`, `user_updated`, `role_changed`, `user_deleted`, `audit_settings_changed`, `audit_cleared`, `reauth_failed`, `reauth_blocked_locked`, `sensitive_action_confirmed` (see `docs/confirm-with-password.md`) |
 
 Severity is `info`, `warning` or `critical` (e.g. a role change that touches a
 superadmin is `critical`).
