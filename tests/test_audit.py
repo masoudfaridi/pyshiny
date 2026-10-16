@@ -205,6 +205,139 @@ class TestRetention:
         assert _events() == []
 
 
+class TestRetentionSettings:
+    DEFAULTS = {
+        "retention_days_navigation": 30,
+        "retention_days_auth": 180,
+        "retention_days_security": 365,
+        "purge_interval_hours": 1,
+    }
+
+    def test_defaults(self, superadmin_ctx):
+        assert core.get_audit_settings() == self.DEFAULTS
+
+    def test_save_persists_and_returns_values(self, superadmin_ctx):
+        new = {**self.DEFAULTS, "retention_days_navigation": 7, "purge_interval_hours": 6}
+        assert core.update_audit_settings(new) == new
+        assert core.get_audit_settings() == new
+        assert audit.get_settings() == new  # stored in the database, not in memory
+
+    def test_change_is_logged_with_old_and_new_values(self, superadmin_ctx):
+        core.update_audit_settings({**self.DEFAULTS, "retention_days_auth": 90})
+        row = _events(category="security")[0]
+        assert row["event"] == "audit_settings_changed" and row["username"] == "superadmin"
+        assert json.loads(row["detail"])["changes"] == {"retention_days_auth": [180, 90]}
+
+    def test_saving_same_values_logs_nothing(self, superadmin_ctx):
+        core.update_audit_settings(dict(self.DEFAULTS))
+        assert _events() == []
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            {"retention_days_navigation": 0},
+            {"retention_days_auth": 3651},
+            {"retention_days_security": -1},
+            {"purge_interval_hours": 169},
+            {"purge_interval_hours": None},
+            {"retention_days_auth": 1.5},
+            {"retention_days_auth": "abc"},
+            {"retention_days_auth": True},
+        ],
+    )
+    def test_invalid_values_are_rejected_and_not_saved(self, superadmin_ctx, bad):
+        with pytest.raises(ValueError):
+            core.update_audit_settings({**self.DEFAULTS, **bad})
+        assert core.get_audit_settings() == self.DEFAULTS
+
+    def test_missing_key_is_rejected(self, superadmin_ctx):
+        with pytest.raises(ValueError):
+            core.update_audit_settings({"retention_days_auth": 10})
+
+    def test_whole_floats_and_numeric_strings_are_accepted(self, superadmin_ctx):
+        core.update_audit_settings({**self.DEFAULTS, "retention_days_auth": 45.0,
+                                    "retention_days_security": "400"})
+        got = core.get_audit_settings()
+        assert got["retention_days_auth"] == 45 and got["retention_days_security"] == 400
+
+    def test_corrupt_stored_value_falls_back_to_default(self, isolated_db):
+        con = audit._connect()
+        con.execute("INSERT INTO audit_settings VALUES ('retention_days_auth', 99999)")
+        con.commit(); con.close()
+        assert audit.get_settings()["retention_days_auth"] == 180
+
+    def test_purge_honours_saved_retention(self, superadmin_ctx):
+        core.update_audit_settings({**self.DEFAULTS, "retention_days_navigation": 3,
+                                    "retention_days_auth": 3})
+        for category in ("navigation", "auth", "security"):
+            audit.log_event(category, "e", user={"role": "user", "username": "u"})
+        later = datetime.now(timezone.utc) + timedelta(days=10)
+        audit.purge_old(now=later)
+        left = {e["category"] for e in _events() if e["event"] == "e"}
+        assert left == {"security"}  # security keeps 365 days
+
+    @pytest.mark.parametrize(
+        "fn_args",
+        [
+            ("get_audit_settings", ()),
+            ("update_audit_settings", ({},)),
+            ("audit_log_counts", ()),
+            ("clear_audit_logs", (None,)),
+        ],
+    )
+    @pytest.mark.parametrize("ctx", ["admin_ctx", "user_ctx", "guest_ctx", "anonymous_ctx"])
+    def test_only_superadmin_may_use_settings_and_clear(self, ctx, fn_args, request):
+        request.getfixturevalue(ctx)
+        name, args = fn_args
+        audit.log_event("auth", "keep_me", user={"role": "user", "username": "u"})
+        with pytest.raises(PermissionError):
+            getattr(core, name)(*args)
+        assert audit.counts()["auth"] == 1  # nothing was deleted
+
+
+class TestClearing:
+    def _fill(self):
+        for category in ("navigation", "navigation", "auth", "security"):
+            audit.log_event(category, "x", user={"role": "user", "username": "u"})
+
+    def test_counts(self, superadmin_ctx):
+        self._fill()
+        assert core.audit_log_counts() == {"auth": 1, "navigation": 2, "security": 1}
+
+    @pytest.mark.parametrize("category", ["navigation", "auth", "security"])
+    def test_clear_one_category_only(self, superadmin_ctx, category):
+        self._fill()
+        others = {c: n for c, n in audit.counts().items() if c != category}
+        deleted = core.clear_audit_logs(category)
+        after = audit.counts()
+        assert deleted == {"navigation": 2, "auth": 1, "security": 1}[category]
+        assert {c: n for c, n in after.items() if c != category and c != "security"} == {
+            c: n for c, n in others.items() if c != "security"
+        }
+        assert after[category] == (1 if category == "security" else 0)  # + the audit_cleared row
+
+    def test_clear_all_leaves_only_the_record_of_the_deletion(self, superadmin_ctx):
+        self._fill()
+        assert core.clear_audit_logs(None) == 4
+        (row,) = _events()
+        assert row["event"] == "audit_cleared" and row["severity"] == "critical"
+        assert row["username"] == "superadmin"
+        assert json.loads(row["detail"]) == {"scope": "all", "deleted": 4}
+
+    def test_clear_unknown_category_is_rejected(self, superadmin_ctx):
+        self._fill()
+        with pytest.raises(ValueError):
+            core.clear_audit_logs("everything")
+        assert sum(audit.counts().values()) == 4
+
+    def test_deletion_is_recorded_even_when_superadmin_logging_is_off(
+        self, superadmin_ctx, monkeypatch
+    ):
+        monkeypatch.setattr(audit, "LOG_SUPERADMIN_ACTIVITY", False)
+        core.clear_audit_logs("auth")
+        assert [e["event"] for e in _events()] == ["audit_cleared"]
+
+
 class TestLogsTabHelpers:
     def test_tab_contract(self):
         from tabs import tab_logs

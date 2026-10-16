@@ -552,4 +552,49 @@ def list_audit_events(
     )
 
 
+@superadmin
+def get_audit_settings() -> dict:
+    """Retention days per category and the automatic-purge interval (hours)."""
+    return audit.get_settings()
+
+
+@superadmin
+def update_audit_settings(values: dict) -> dict:
+    """Validate and save the audit settings. Raises ValueError on bad values."""
+    changes = audit.save_settings(values)
+    if changes:
+        audit.log_event(
+            "security",
+            "audit_settings_changed",
+            user=current_user(),
+            severity="warning",
+            detail={"changes": changes},
+        )
+    return audit.get_settings()
+
+
+@superadmin
+def audit_log_counts() -> dict:
+    """Stored row count per category."""
+    return audit.counts()
+
+
+@superadmin
+def clear_audit_logs(category: str | None = None) -> int:
+    """Delete one category's rows (``category=None`` deletes everything).
+
+    The deletion itself is recorded *afterwards* in the Security log, so even
+    "clear all" leaves one row saying who wiped what and how many rows.
+    """
+    deleted = audit.clear(category)
+    audit.log_event(
+        "security",
+        "audit_cleared",
+        user=current_user(),
+        severity="critical",
+        detail={"scope": category or "all", "deleted": deleted},
+    )
+    return deleted
+
+
 init_db()

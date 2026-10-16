@@ -78,7 +78,7 @@ TABS = [tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_account, tab
 TAB_LOOKUP = {tab.NAV_ID: tab for tab in TABS}
 DEFAULT_TAB_ID = "tab_04"  # guest-accessible default so lower roles land on a valid page
 
-_last_purge = 0.0  # audit-log retention purge runs at most once an hour
+_last_purge = 0.0  # time of the last automatic audit-log purge (interval: Logs tab settings)
 
 # A "group" is not a tab by itself -- it's just a collapsible header in the
 # sidebar for every tab whose NAV_GROUP matches its key.
@@ -372,7 +372,7 @@ def server(input, output, session):
 
     # --- audit log helpers (see auth/audit.py) -------------------------------
     global _last_purge
-    if time.time() - _last_purge > 3600:
+    if time.time() - _last_purge > audit.get_settings()["purge_interval_hours"] * 3600:
         _last_purge = time.time()
         audit.purge_old()
 

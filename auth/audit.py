@@ -48,11 +48,32 @@ LOG_SUPERADMIN_ACTIVITY = os.environ.get("AUDIT_LOG_SUPERADMIN", "1").strip() !=
 # Events that are recorded even when the actor is a superadmin and
 # LOG_SUPERADMIN_ACTIVITY is off.
 ALWAYS_LOG_EVENTS = frozenset(
-    {"user_created", "user_updated", "role_changed", "user_deleted"}
+    {
+        "user_created", "user_updated", "role_changed", "user_deleted",
+        "audit_settings_changed", "audit_cleared",
+    }
 )
 
-# Retention in days per category (navigation is high volume, so shortest).
-RETENTION_DAYS = {"auth": 180, "navigation": 30, "security": 365}
+# Retention / purge settings. The superadmin edits them in the Logs tab; they
+# are stored in the ``audit_settings`` table. These are the defaults
+# (navigation is high volume, so it is kept the shortest).
+DEFAULT_SETTINGS = {
+    "retention_days_navigation": 30,
+    "retention_days_auth": 180,
+    "retention_days_security": 365,
+    "purge_interval_hours": 1,  # automatic purge runs at most once per this many hours
+}
+SETTING_LIMITS = {  # inclusive (min, max)
+    "retention_days_navigation": (1, 3650),
+    "retention_days_auth": (1, 3650),
+    "retention_days_security": (1, 3650),
+    "purge_interval_hours": (1, 168),
+}
+_RETENTION_KEY = {
+    "navigation": "retention_days_navigation",
+    "auth": "retention_days_auth",
+    "security": "retention_days_security",
+}
 
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 _USERNAME_MAX = 64
@@ -79,6 +100,10 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
 CREATE INDEX IF NOT EXISTS idx_audit_cat_ts ON audit_log(category, ts);
 CREATE INDEX IF NOT EXISTS idx_audit_username ON audit_log(username);
+CREATE TABLE IF NOT EXISTS audit_settings (
+    key   TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+);
 """
 
 
@@ -244,15 +269,123 @@ def query_events(
         con.close()
 
 
+def _as_int(value) -> int:
+    if isinstance(value, bool) or value is None:
+        raise ValueError("not a whole number")
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError("not a whole number")
+        return int(value)
+    if isinstance(value, str):
+        return int(value.strip())
+    if isinstance(value, int):
+        return value
+    raise ValueError("not a whole number")
+
+
+def validate_settings(values: dict) -> dict:
+    """Return a clean ``{key: int}`` for every setting, or raise ValueError."""
+    clean = {}
+    for key, (low, high) in SETTING_LIMITS.items():
+        if key not in values:
+            raise ValueError(f"{key}: missing")
+        try:
+            number = _as_int(values[key])
+        except (TypeError, ValueError):
+            raise ValueError(f"{key}: must be a whole number") from None
+        if not low <= number <= high:
+            raise ValueError(f"{key}: must be between {low} and {high}")
+        clean[key] = number
+    return clean
+
+
+def get_settings() -> dict:
+    """Current settings (defaults for anything missing or out of range)."""
+    settings = dict(DEFAULT_SETTINGS)
+    try:
+        con = _connect()
+        try:
+            rows = con.execute("SELECT key, value FROM audit_settings").fetchall()
+        finally:
+            con.close()
+        for row in rows:
+            limits = SETTING_LIMITS.get(row["key"])
+            if limits and limits[0] <= row["value"] <= limits[1]:
+                settings[row["key"]] = row["value"]
+    except Exception:
+        pass
+    return settings
+
+
+def save_settings(values: dict) -> dict:
+    """Validate and store settings. Returns ``{key: [old, new]}`` of changes.
+    No permission check: use ``auth.core.update_audit_settings`` (``@superadmin``)."""
+    new = validate_settings(values)
+    old = get_settings()
+    con = _connect()
+    try:
+        for key, number in new.items():
+            con.execute(
+                "INSERT INTO audit_settings(key, value) VALUES(?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, number),
+            )
+        con.commit()
+    finally:
+        con.close()
+    return {key: [old[key], new[key]] for key in new if old[key] != new[key]}
+
+
+def counts() -> dict:
+    """Number of stored rows per category."""
+    result = {category: 0 for category in CATEGORIES}
+    try:
+        con = _connect()
+        try:
+            for row in con.execute(
+                "SELECT category, COUNT(*) AS n FROM audit_log GROUP BY category"
+            ):
+                result[row["category"]] = row["n"]
+        finally:
+            con.close()
+    except Exception:
+        pass
+    return result
+
+
+def clear(category: str | None = None) -> int:
+    """Delete all rows of one category (or every row when ``category`` is None).
+    Returns the number of deleted rows. No permission check: use
+    ``auth.core.clear_audit_logs`` (``@superadmin``)."""
+    if category is not None and category not in CATEGORIES:
+        raise ValueError(f"unknown category: {category}")
+    con = _connect()
+    try:
+        if category is None:
+            deleted = con.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
+            con.execute("DELETE FROM audit_log")
+        else:
+            deleted = con.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE category=?", (category,)
+            ).fetchone()[0]
+            con.execute("DELETE FROM audit_log WHERE category=?", (category,))
+        con.commit()
+    finally:
+        con.close()
+    return deleted
+
+
 def purge_old(now: datetime | None = None) -> int:
-    """Delete rows older than the per-category retention. Returns row count."""
+    """Delete rows older than the configured per-category retention.
+    Returns the number of deleted rows."""
     now = now or datetime.now(timezone.utc)
+    settings = get_settings()
     removed = 0
     try:
         con = _connect()
         try:
-            for category, days in RETENTION_DAYS.items():
-                cutoff = (now - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+            for category, key in _RETENTION_KEY.items():
+                cutoff = (now - timedelta(days=settings[key])).strftime("%Y-%m-%d %H:%M:%S")
                 cur = con.execute(
                     "DELETE FROM audit_log WHERE category=? AND ts<?", (category, cutoff)
                 )

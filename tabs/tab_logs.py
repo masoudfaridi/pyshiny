@@ -14,6 +14,11 @@ Protection uses BOTH layers:
 The user is passed in as a function (``_ensure_valid_session`` from app.py) that
 re-checks the account in SQLite on every render / download.
 
+Settings and clean-up (second sub-tab) follow the same rule: saving the
+retention settings and deleting log rows go through ``@superadmin`` functions in
+``auth.core``; deleting always asks for a confirmation click first, and the
+deletion itself is recorded afterwards in the Security log.
+
 CSV export: ``render.download`` is deprecated in recent Shiny releases and the
 replacement API differs between versions, so the export is a plain
 ``<a download href="data:text/csv...">`` link produced by ``render.ui``. The CSV
@@ -35,7 +40,15 @@ from urllib.parse import quote
 
 from shiny import module, reactive, render, ui
 
-from auth import list_audit_events, user_context
+from auth import (
+    audit_log_counts,
+    clear_audit_logs,
+    get_audit_settings,
+    list_audit_events,
+    update_audit_settings,
+    user_context,
+)
+from auth.audit import SETTING_LIMITS
 from i18n import APP_LANG
 
 NAV_ID = "tab_logs"
@@ -76,6 +89,37 @@ _TEXTS = {
         "empty": "No events match the filters.",
         "denied": "You do not have access to this section.",
         "signin": "Your session is no longer valid. Please sign in again.",
+        "section_events": "Events",
+        "section_settings": "Settings",
+        "settings_title": "Retention settings",
+        "settings_intro": (
+            "Old events are deleted automatically. Choose how long each log is "
+            "kept and how often the automatic clean-up may run."
+        ),
+        "ret_navigation": "Navigation log: keep (days)",
+        "ret_auth": "Authentication log: keep (days)",
+        "ret_security": "Security log: keep (days)",
+        "purge_interval": "Automatic clean-up at most once every (hours)",
+        "save_settings": "Save settings",
+        "settings_saved": "Settings saved.",
+        "settings_invalid": "Invalid values. Days: 1-3650, hours: 1-168.",
+        "cleanup_title": "Clean up logs",
+        "cleanup_intro": (
+            "Deleting cannot be undone. The deletion itself is recorded in the "
+            "Security log."
+        ),
+        "stored_rows": "Stored rows",
+        "clear_navigation": "Clear navigation log",
+        "clear_auth": "Clear authentication log",
+        "clear_security": "Clear security log",
+        "clear_all": "Clear ALL logs",
+        "confirm_navigation": "Delete the whole navigation log?",
+        "confirm_auth": "Delete the whole authentication log?",
+        "confirm_security": "Delete the whole security log?",
+        "confirm_all": "Delete ALL logs (navigation, authentication and security)?",
+        "confirm_yes": "Yes, delete",
+        "confirm_no": "Cancel",
+        "cleared": "Deleted rows: ",
     },
     "fa": {
         "label": "لاگ‌ها",
@@ -107,6 +151,36 @@ _TEXTS = {
         "empty": "رویدادی با این فیلترها پیدا نشد.",
         "denied": "دسترسی به این بخش برای شما مقدور نیست.",
         "signin": "نشست شما دیگر معتبر نیست. لطفاً دوباره وارد شوید.",
+        "section_events": "رویدادها",
+        "section_settings": "تنظیمات",
+        "settings_title": "تنظیمات نگهداری",
+        "settings_intro": (
+            "رویدادهای قدیمی به‌صورت خودکار پاک می‌شوند. مشخص کنید هر لاگ چند "
+            "روز نگهداری شود و پاکسازی خودکار حداکثر هر چند ساعت یک بار اجرا شود."
+        ),
+        "ret_navigation": "لاگ ناوبری: نگهداری (روز)",
+        "ret_auth": "لاگ احراز هویت: نگهداری (روز)",
+        "ret_security": "لاگ امنیتی: نگهداری (روز)",
+        "purge_interval": "پاکسازی خودکار حداکثر هر (ساعت) یک بار",
+        "save_settings": "ذخیره تنظیمات",
+        "settings_saved": "تنظیمات ذخیره شد.",
+        "settings_invalid": "مقادیر نامعتبر است. روز: ۱ تا ۳۶۵۰، ساعت: ۱ تا ۱۶۸.",
+        "cleanup_title": "پاکسازی لاگ‌ها",
+        "cleanup_intro": (
+            "حذف قابل بازگشت نیست. خود عملیات حذف در لاگ امنیتی ثبت می‌شود."
+        ),
+        "stored_rows": "ردیف‌های ذخیره‌شده",
+        "clear_navigation": "پاک کردن لاگ ناوبری",
+        "clear_auth": "پاک کردن لاگ احراز هویت",
+        "clear_security": "پاک کردن لاگ امنیتی",
+        "clear_all": "پاک کردن همه لاگ‌ها",
+        "confirm_navigation": "کل لاگ ناوبری حذف شود؟",
+        "confirm_auth": "کل لاگ احراز هویت حذف شود؟",
+        "confirm_security": "کل لاگ امنیتی حذف شود؟",
+        "confirm_all": "همه لاگ‌ها (ناوبری، احراز هویت و امنیتی) حذف شود؟",
+        "confirm_yes": "بله، حذف شود",
+        "confirm_no": "انصراف",
+        "cleared": "تعداد ردیف‌های حذف‌شده: ",
     },
 }
 
@@ -181,11 +255,9 @@ def _limit_value(raw) -> int:
 
 
 # --------------------------------- UI ---------------------------------------
-@module.ui
-def _ui():
+def _events_panel():
+    """Filter bar + the three category tables."""
     return ui.div(
-        ui.h3(_tx("title")),
-        ui.p(_tx("intro")),
         # One flex row: equal-height fields, labels on one line, buttons aligned
         # with the bottom of the inputs. Styles: ".log-filters" in styles.css.
         ui.div(
@@ -233,6 +305,59 @@ def _ui():
             ui.nav_panel(_tx("cat_security"), ui.output_ui("table_security"), value="security"),
             id="cat",
         ),
+    )
+
+
+def _settings_panel():
+    """Retention settings + clean-up buttons (every action is server-guarded)."""
+    return ui.div(
+        ui.div(
+            ui.h5(_tx("settings_title")),
+            ui.p(_tx("settings_intro"), class_="text-muted"),
+            ui.output_ui("settings_form"),
+            ui.div(
+                ui.input_action_button(
+                    "save_settings", _tx("save_settings"), class_="btn btn-primary"
+                ),
+                class_="log-actions mt-3",
+            ),
+            class_="user-form-card mb-3",
+        ),
+        ui.div(
+            ui.h5(_tx("cleanup_title")),
+            ui.p(_tx("cleanup_intro"), class_="text-muted"),
+            ui.output_ui("log_counts"),
+            ui.div(
+                ui.input_action_button(
+                    "clear_navigation", _tx("clear_navigation"), class_="btn btn-outline-danger"
+                ),
+                ui.input_action_button(
+                    "clear_auth", _tx("clear_auth"), class_="btn btn-outline-danger"
+                ),
+                ui.input_action_button(
+                    "clear_security", _tx("clear_security"), class_="btn btn-outline-danger"
+                ),
+                ui.input_action_button(
+                    "clear_all", _tx("clear_all"), class_="btn btn-danger"
+                ),
+                class_="log-actions mt-2",
+            ),
+            ui.output_ui("confirm_bar"),
+            class_="user-form-card",
+        ),
+    )
+
+
+@module.ui
+def _ui():
+    return ui.div(
+        ui.h3(_tx("title")),
+        ui.p(_tx("intro")),
+        ui.navset_pill(
+            ui.nav_panel(_tx("section_events"), _events_panel(), value="events"),
+            ui.nav_panel(_tx("section_settings"), _settings_panel(), value="settings"),
+            id="section",
+        ),
         class_="tab-pane-content",
     )
 
@@ -247,6 +372,31 @@ def _server(input, output, session, get_session_user):
     @reactive.event(input.refresh_btn)
     def _on_refresh():
         refresh.set(refresh() + 1)
+
+    settings_rev = reactive.Value(0)  # bump to re-read the saved settings
+    pending = reactive.Value(None)  # clear-confirmation: None | category | "all"
+
+    def _guarded(function, *args):
+        """Run a ``@superadmin`` function as the re-validated user.
+
+        Returns ``(result, error_key)`` with error_key in
+        ``None | "signin" | "denied" | "invalid"``.
+        """
+        person = get_session_user()
+        if person is None:
+            return None, "signin"
+        try:
+            with user_context(person):
+                return function(*args), None
+        except PermissionError:
+            return None, "denied"
+        except ValueError:
+            return None, "invalid"
+
+    def _toast(message_key: str, kind: str = "message", suffix: str = ""):
+        if message_key == "invalid":
+            message_key = "settings_invalid"
+        ui.notification_show(_tx(message_key) + suffix, type=kind, duration=5)
 
     def _fetch(category: str):
         """Return (rows, error_key). The decorator is the real access check."""
@@ -298,6 +448,119 @@ def _server(input, output, session, get_session_user):
             class_="mt-3",
         )
 
+    # ---------------------- settings (retention) ----------------------------
+    @render.ui
+    def settings_form():
+        settings_rev()
+        settings, error = _guarded(get_audit_settings)
+        if error:
+            return ui.div(_tx(error), class_="login-error")
+
+        def number(input_id, label_key, setting):
+            low, high = SETTING_LIMITS[setting]
+            return ui.div(
+                ui.input_numeric(
+                    input_id, _tx(label_key), settings[setting],
+                    min=low, max=high, step=1, width="100%",
+                ),
+                class_="log-field",
+            )
+
+        return ui.div(
+            number("ret_navigation", "ret_navigation", "retention_days_navigation"),
+            number("ret_auth", "ret_auth", "retention_days_auth"),
+            number("ret_security", "ret_security", "retention_days_security"),
+            number("purge_interval", "purge_interval", "purge_interval_hours"),
+            class_="log-filters",
+        )
+
+    @reactive.effect
+    @reactive.event(input.save_settings)
+    def _on_save_settings():
+        values = {
+            "retention_days_navigation": input.ret_navigation(),
+            "retention_days_auth": input.ret_auth(),
+            "retention_days_security": input.ret_security(),
+            "purge_interval_hours": input.purge_interval(),
+        }
+        _, error = _guarded(update_audit_settings, values)
+        if error:
+            _toast(error, "error")
+            return
+        settings_rev.set(settings_rev() + 1)
+        _toast("settings_saved")
+
+    # ---------------------- clean-up (always confirmed) ---------------------
+    @render.ui
+    def log_counts():
+        refresh()
+        counts, error = _guarded(audit_log_counts)
+        if error:
+            return ui.div(_tx(error), class_="login-error")
+        return ui.p(
+            f"{_tx('stored_rows')}: "
+            f"{_tx('cat_navigation')} {counts['navigation']} \u00b7 "
+            f"{_tx('cat_auth')} {counts['auth']} \u00b7 "
+            f"{_tx('cat_security')} {counts['security']}",
+            class_="mb-1",
+        )
+
+    @reactive.effect
+    @reactive.event(input.clear_navigation)
+    def _ask_navigation():
+        pending.set("navigation")
+
+    @reactive.effect
+    @reactive.event(input.clear_auth)
+    def _ask_auth():
+        pending.set("auth")
+
+    @reactive.effect
+    @reactive.event(input.clear_security)
+    def _ask_security():
+        pending.set("security")
+
+    @reactive.effect
+    @reactive.event(input.clear_all)
+    def _ask_all():
+        pending.set("all")
+
+    @reactive.effect
+    @reactive.event(input.cancel_clear)
+    def _cancel_clear():
+        pending.set(None)
+
+    @render.ui
+    def confirm_bar():
+        target = pending()
+        if target is None:
+            return ui.div()
+        return ui.div(
+            ui.span(_tx(f"confirm_{target}"), class_="me-3 fw-bold"),
+            ui.input_action_button(
+                "confirm_clear", _tx("confirm_yes"), class_="btn btn-danger me-2"
+            ),
+            ui.input_action_button(
+                "cancel_clear", _tx("confirm_no"), class_="btn btn-secondary"
+            ),
+            class_="log-actions mt-3",
+        )
+
+    @reactive.effect
+    @reactive.event(input.confirm_clear)
+    def _on_confirm_clear():
+        target = pending()
+        if target is None:
+            return
+        pending.set(None)
+        deleted, error = _guarded(clear_audit_logs, None if target == "all" else target)
+        if error:
+            _toast(error, "error")
+            return
+        refresh.set(refresh() + 1)  # tables and counters re-read the database
+        _toast("cleared", "message", str(deleted))
+
+    # ---------------------- event tables ------------------------------------
     @render.ui
     def table_auth():
         return _table("auth")
