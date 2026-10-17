@@ -21,7 +21,7 @@ python -m pytest -v
 
 | File | Covers |
 |------|--------|
-| `conftest.py` | Isolated temp SQLite DB, role fixtures |
+| `conftest.py` | Isolated temp SQLite DBs (`isolated_db`, autouse `isolated_audit_db`), role fixtures |
 | `test_password.py` | PBKDF2 hash/verify, change_own_password |
 | `test_validation.py` | Username/password rules, expiry helpers |
 | `test_authenticate.py` | Login, inactive/expired accounts, seed users |
@@ -37,5 +37,8 @@ python -m pytest -v
 | `test_theme_coverage.py` | All 12 themes define the variables; widget selectors, sidebar toggle wiring, CAPTCHA size/font |
 | `test_i18n.py` | English/Persian dictionary parity, `APP_LANG` selection, JS theme names |
 | `test_auth_package.py` | Context manager / constants smoke |
+| `test_tab_07.py` | The four role-gated buttons follow the role hierarchy (fail-closed) |
+| `test_audit.py` | Audit log: superadmin policy, hooks in `auth.core`, input sanitising, retention settings, clear/purge, single `@guest` wrapping, Logs-tab helpers |
+| `test_confirm.py` | `@confirm_with_password`: dialog flow, wrong password, lockout sharing, expiry, forged inputs, logging |
 
 All mutating tests use a **temporary database** (`isolated_db`); the real `db/auth.db` is never modified.

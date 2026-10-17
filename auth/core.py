@@ -352,7 +352,6 @@ def authenticate(username: str, password: str) -> dict | None:
 
 
 @guest
-@guest
 def verify_own_password(password: str) -> bool:
     """True if ``password`` is the password of the CURRENT (signed-in) user.
 
@@ -369,6 +368,7 @@ def verify_own_password(password: str) -> bool:
     return bool(password) and row is not None and _verify_password(password, row[0])
 
 
+@guest
 def change_own_password(current_password: str, new_password: str) -> None:
     """Change the password of the currently authenticated user."""
     current = current_user()

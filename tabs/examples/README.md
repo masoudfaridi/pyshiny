@@ -33,7 +33,7 @@ Suggested reading order: 01 -> 02 -> 03 -> 04 -> 05, then pick what you need.
 
 ## Use an example as the base of a real tab
 
-1. Copy the file: `cp tabs/examples/ex03_counter.py tabs/tab_07.py`
+1. Copy the file: `cp tabs/examples/ex03_counter.py tabs/tab_08.py`
 2. In the new file change `NAV_ID`, `MODULE_ID` (keep them equal), `NAV_LABEL`,
    `NAV_ICON`, and `NAV_MIN_ROLE`.
 3. Follow steps 2-4 of [`HOW_TO_ADD_A_TAB.md`](../HOW_TO_ADD_A_TAB.md)

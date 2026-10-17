@@ -4,6 +4,31 @@ A customizable Shiny for Python dashboard featuring role-based authentication,
  SQLite user storage, optional account expiration, self-service password changes,
   12 selectable themes, and hierarchical RBAC decorators.
 
+Beyond the basics it also ships with:
+
+- a **password re-confirmation decorator** (`@confirm_with_password`): confirmation
+  message + the user's own password before a sensitive callback runs;
+- an **audit log** (authentication, navigation and security events in
+  `db/audit.db`) with a superadmin-only **Logs** tab: filters, CSV export,
+  configurable retention and clean-up buttons;
+- an English / Persian (RTL) interface switched by one setting (`APP_LANG`);
+- two layers of access control: tabs hidden by role **and** server-side
+  decorators that stop callbacks from running.
+
+## Documentation map
+
+| Where | What |
+|-------|------|
+| this `README.md` | overview, setup, API reference of the `auth` package, decorators, audit log |
+| [`tutorial/TUTORIAL.md`](tutorial/TUTORIAL.md) | **complete guide in Persian**: architecture, every function and decorator, building tabs, i18n, tests, security checklist, troubleshooting |
+| [`docs/audit-log.md`](docs/audit-log.md) | audit log events, settings, operations |
+| [`docs/confirm-with-password.md`](docs/confirm-with-password.md) | `@confirm_with_password` flow and security notes |
+| [`tabs/HOW_TO_ADD_A_TAB.md`](tabs/HOW_TO_ADD_A_TAB.md) | every place to edit when adding a tab |
+| [`tabs/MODULES.md`](tabs/MODULES.md) | how Shiny modules work |
+| [`tabs/examples/`](tabs/examples/README.md) | 15 copy-ready tab examples |
+| [`tests/README.md`](tests/README.md) | the test suite |
+| [`docker/README.md`](docker/README.md) | Docker quick reference |
+
 
 **🔗 Live Demo:** [https://masoudfaridi.shinyapps.io/pyshiny/](https://masoudfaridi.shinyapps.io/pyshiny/)
 
@@ -32,8 +57,12 @@ pyshiny/
 │   ├── captcha.py             # Offline image CAPTCHA generator
 │   ├── audit.py               # Audit log storage (db/audit.db); see docs/audit-log.md
 │   └── confirm.py             # @confirm_with_password; see docs/confirm-with-password.md
-├── db/                        # SQLite database (created on first run)
-│                              #   auth.db is NEVER shipped – see .gitignore
+├── db/                        # SQLite databases (created on first run; never shipped)
+│                              #   auth.db  = users, audit.db = audit log + its settings
+├── docs/                      # audit-log.md, confirm-with-password.md, screenshots
+├── tutorial/
+│   └── TUTORIAL.md            # complete guide (Persian)
+├── tests/                     # pytest suite (see tests/README.md)
 ├── docker/
 │   ├── Dockerfile             # Image build (Python 3.12-slim + deps)
 │   ├── entrypoint.sh          # Starts Shiny on 0.0.0.0:$PORT
@@ -53,7 +82,7 @@ pyshiny/
     ├── tab_04.py              # Components (Guest+)
     ├── tab_05.py              # Widgets
     ├── tab_06.py              # Tables
-    ├── tab_07.py              # Role-gated buttons (superadmin/admin/user/guest)
+    ├── tab_07.py              # Role-gated buttons + password-protected buttons (demo/test tab)
     ├── tab_account.py         # Self-service account and password management
     ├── tab_users.py           # Superadmin-only user management
     ├── tab_logs.py            # Superadmin-only audit log viewer (last tab); see docs/audit-log.md
@@ -385,6 +414,19 @@ Current core dependencies:
 | numpy        | Numerical arrays used by the charts  |
 | matplotlib   | Histogram and plot rendering         |
 
+## Environment variables
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `APP_LANG` | `en` | `en` (LTR) or `fa` (RTL). Beats the value in `i18n.py`; restart after changing. |
+| `PORT` | `8000` | Port inside Docker (`docker compose` publishes the same port). |
+| `AUDIT_LOG_SUPERADMIN` | `1` | `0` = do not record the superadmin's own routine activity. Account management, log clean-up and attacks on the `superadmin` account are still recorded. |
+| `TRUST_PROXY_HEADERS` | off | `1` = read the client IP from `X-Forwarded-For`. Only behind a trusted reverse proxy (otherwise spoofable). |
+
+Constants you may tune in code: `LOGIN_MAX_FAILURES` (5) and
+`LOGIN_LOCKOUT_SECONDS` (300) in `auth/core.py`, `DEFAULT_TIMEOUT_SECONDS` (120) in
+`auth/confirm.py`, `CAPTCHA_LENGTH` / `CAPTCHA_TTL_SECONDS` in `auth/captcha.py`.
+
 ## Run the Application
 
 Start the Shiny application with:
@@ -503,6 +545,12 @@ The authentication system includes several security protections:
 - The SQLite database is generated automatically on first run and `db/auth.db`
   should never be committed to the repository.
 - Change all default passwords before using the application in a real environment.
+- Role decorators are enforced on the server and are fail-closed; every refusal
+  is written to the audit log.
+- Sensitive actions can require the user's own password (`@confirm_with_password`),
+  sharing the login lockout counters.
+- Serve the app over HTTPS (passwords travel over the websocket) and see the
+  limits listed in the audit-log section and in `tutorial/TUTORIAL.md` (chapter 14).
 
 For production deployment, additional infrastructure-level protections such as
 shared rate limiting and security headers may be required.
@@ -592,6 +640,239 @@ lowest authenticated permission level; it does not mean anonymous access.
 If a user does not have the required permission, the decorator raises
 `PermissionError` before the protected function is executed.
 
+### How the decorators work
+
+```python
+def require_role(required_role):
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            if not has_role(required_role):
+                audit.log_event("security", "access_denied", ...)   # always logged
+                raise PermissionError(...)
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
+
+superadmin = require_role("superadmin")   # admin, user, guest likewise
+```
+
+* The user is **not** a parameter. It comes from `current_user()`, i.e. from
+  the surrounding `with user_context(user):` block. Call protected functions
+  inside that block.
+* **Fail-closed:** outside `user_context` there is no user, so every decorator
+  raises `PermissionError`.
+* `has_role()` also rejects inactive and expired accounts, whatever their role.
+* Every refusal is written to the Security log as `access_denied` (function
+  name + required role). The decorator is the single choke point for that.
+* `require_role(role)` can be used directly to make your own named decorator;
+  an unknown role raises `KeyError` when the function runs.
+
+### Using them inside Shiny callbacks
+
+Put the decorator on the function that does the work, and call it from the
+callback inside `user_context` with a **freshly validated** user
+(`_ensure_valid_session` in `app.py`, passed to the tab as `get_session_user`):
+
+```python
+from auth import admin, user_context
+
+@admin
+def export_report(report_id):
+    return build(report_id)
+
+@reactive.effect
+@reactive.event(input.export)
+def _on_export():
+    person = get_session_user()          # re-read from SQLite
+    if person is None:
+        return                           # signed out / revoked
+    try:
+        with user_context(person):
+            export_report(5)
+    except PermissionError:
+        ui.notification_show("You do not have access to this section.", type="error")
+```
+
+`tabs/tab_07.py` contains this pattern as `_attempt()`.
+
+Common mistakes: decorating the reactive handler itself (it runs without a user,
+so it always fails); passing the raw `logged_in_user` (a cache: a demoted
+account keeps its old role); naming a variable `user` after
+`from auth import user` (it shadows the decorator); using `current_role()` for a
+security decision (it answers `"guest"` when nobody is signed in).
+
+### Two layers of access control
+
+1. **Hiding (UI):** `NAV_MIN_ROLE` of a tab decides who sees its sidebar link;
+   `build_sidebar()` omits it and `active_panel` refuses to render it. Forged
+   tab requests are recorded in the Security log.
+2. **Decorators (server):** stop a callback from running no matter how its input
+   arrived. This matters because every tab's server runs for every session and
+   Shiny accepts any input id the browser sends: a hidden button can still be
+   "clicked" by a crafted message.
+
+| Tab | Hidden by role | Server-side decorators |
+|-----|:--------------:|:----------------------:|
+| `tab_01` / `tab_02` / `tab_03` | superadmin / admin / user | **no** (UI only; they only draw random samples) |
+| `tab_04`, `tab_05`, `tab_06` | guest | n/a (open to every signed-in user) |
+| `tab_07` | guest | yes (every button) |
+| `tab_account` | guest | yes (`change_own_password` is `@guest`) |
+| `tab_users` | superadmin | yes (`@superadmin` CRUD functions + explicit role checks) |
+| `tab_logs` | superadmin | yes (all log functions are `@superadmin`) |
+
+## Public API of the `auth` package
+
+Everything below is importable with `from auth import ...`.
+
+### Roles, context and decorators
+
+| Name | Description |
+|------|-------------|
+| `ROLE_LEVELS` | `{"guest": 0, "user": 1, "admin": 2, "superadmin": 3}` |
+| `superadmin`, `admin`, `user`, `guest` | the four decorators |
+| `require_role(role)` | factory behind them |
+| `user_context(user)` | context manager binding the current user |
+| `current_user()` / `current_role()` | current user dict (or `None`) / role (`"guest"` when anonymous, display only) |
+| `has_role(role)` | `True` for an active, non-expired user at or above `role` |
+
+### Accounts and sessions
+
+| Function | Notes |
+|----------|-------|
+| `init_db()` | schema, migration, default accounts (runs on import) |
+| `authenticate(username, password)` | session dict or `None`; always runs a hash check (timing protection); no decorator (called before login) |
+| `get_user_by_id(user_id)` | user dict or `None` |
+| `refresh_session_user(session_user)` | re-reads the user; `None` if deleted, disabled or expired |
+| `is_login_locked(username)` | `(locked, seconds_remaining)` |
+| `register_login_failure(username)` | returns `True` only for the failure that causes the lock |
+| `clear_login_failures(username)` | reset after a successful login |
+| `validate_username(name)` / `validate_password(pw, strict=False)` | raise `ValueError` with a translated message |
+| `verify_own_password(password)` | `@guest`; checks the password of the **current** user only |
+| `change_own_password(current, new)` | `@guest`; the new password must contain a letter and a digit |
+| `create_user(username, password, role, expire_date=None)` | `@superadmin` |
+| `list_users()` | `@superadmin`; never returns hashes |
+| `update_user(user_id, username, role, is_active, new_password="", expire_date=None)` | `@superadmin`; protects the last active superadmin |
+| `delete_user(user_id)` | `@superadmin`; not yourself, not the last active superadmin |
+
+Session dict: `{"id", "username", "role", "is_active", "expire_date"}`
+(`app.py` adds `sid`, `ip`, `ua` for the audit log).
+Errors: `ValueError` = invalid input / business rule (message is translated);
+`PermissionError` = not allowed; `sqlite3.IntegrityError` = e.g. duplicate username.
+
+### CAPTCHA
+
+`generate_captcha()` -> `(png_data_url, answer_hash, expires_at)`;
+`verify_captcha(answer, hash, expires_at)` -> `bool`.
+
+### Audit log (see the section below)
+
+`audit` (module), `list_audit_events`, `get_audit_settings`,
+`update_audit_settings`, `audit_log_counts`, `clear_audit_logs` (all
+`@superadmin`).
+
+### Password re-confirmation
+
+`confirm_with_password` (next section).
+
+## Password re-confirmation: `@confirm_with_password`
+
+Runs a callback only after a confirmation dialog with **your message** and then
+the signed-in user's **own account password**. Place it directly above the
+callback:
+
+```python
+from auth import confirm_with_password
+
+@reactive.effect
+@reactive.event(input.btn_delete)
+@confirm_with_password(
+    input,                          # the module server's input
+    get_session_user,               # app.py's _ensure_valid_session
+    message={"en": "Delete all data?", "fa": "همه داده‌ها حذف شود؟"},
+    required_role="admin",          # optional, checked before any dialog
+    timeout_seconds=120,            # optional
+)
+def _on_delete():
+    ...                             # runs only after the right password
+```
+
+| Parameter | Meaning |
+|-----------|---------|
+| `message` | first dialog text: string, `{"en": ..., "fa": ...}` dict, or an `i18n.STRINGS` key |
+| `title` | optional title (same forms) |
+| `required_role` | minimum role, checked **before** any dialog is shown |
+| `timeout_seconds` | how long the confirmation stays valid (default 120) |
+
+Flow: click -> role check -> dialog 1 (message, Continue/Cancel) -> dialog 2
+(password) -> correct: callback runs; wrong: error inside the dialog; too many
+wrong passwords: dialog closes and the account is locked like on the login form;
+expired / different user: aborted with a toast. All fixed texts are the
+`reauth_*` keys in `i18n.py` (English + Persian). Details and security notes:
+[`docs/confirm-with-password.md`](docs/confirm-with-password.md).
+
+Keep in mind: the callback function name must be unique inside its module (it
+builds the dialog ids); the password travels over the websocket, so serve the app
+over HTTPS; and keep the role decorator on the functions the callback calls
+(defence in depth).
+
+## Role-gated buttons demo (`tab_07`)
+
+Eight buttons, all visible to everyone; the server decides.
+
+* Superadmin / Admin / User / Guest buttons: each calls a function wrapped by
+  `@superadmin` / `@admin` / `@user` / `@guest`. A too-low role gets the toast
+  "You do not have access to this section." (Persian: «دسترسی به این بخش برای شما مقدور نیست.»).
+* Four **Secure ...** buttons: the same roles, but behind `@confirm_with_password`
+  (message dialog, then the account password). The guest one expires after 30 s
+  so the expiry message can be tested.
+
+## Audit log
+
+Events are stored in `db/audit.db` (SQLite, WAL), separate from the user
+database, and shown in the superadmin-only **Logs** tab (always the last tab).
+
+| Category | Events |
+|----------|--------|
+| `auth` | `login_success`, `login_failed` (`bad_credentials` / `captcha`), `logout`, `password_changed`, `password_change_failed` |
+| `navigation` | `tab_opened`, `session_ended` |
+| `security` | `access_denied`, `unauthorized_tab_request`, `unknown_tab_request`, `account_locked`, `login_blocked_locked`, `session_revoked`, `user_created`, `user_updated`, `role_changed`, `user_deleted`, `audit_settings_changed`, `audit_cleared`, `reauth_failed`, `reauth_blocked_locked`, `sensitive_action_confirmed` |
+
+Each row: UTC time, category, event, severity (`info` / `warning` / `critical`),
+user id / name / role, session id, IP, user agent and a JSON `detail`.
+
+* **Never logged:** passwords and CAPTCHA answers. Inputs are sanitised
+  (control characters removed, lengths capped).
+* **Logging never breaks the app:** `audit.log_event()` swallows its own errors.
+* **Logs tab -> Events:** three sub-tabs, filters (severity, username, rows),
+  refresh and CSV export (formula-injection safe).
+* **Logs tab -> Settings:** retention per category (defaults: navigation 30 days,
+  authentication 180, security 365), the minimum interval between automatic
+  clean-ups (default 1 hour), and buttons to clear the navigation,
+  authentication or security log separately or all logs at once (each asks for
+  confirmation). Clearing is itself recorded afterwards as `audit_cleared`.
+* **Superadmin:** recorded like everyone else (default). `AUDIT_LOG_SUPERADMIN=0`
+  skips the superadmin's own routine activity, but account management, log
+  settings/clean-up and attacks on the `superadmin` account are still recorded.
+* **Adding an event:** `audit.log_event("security", "my_event", user=current_user(), detail={...})`.
+
+Limits: the automatic clean-up is checked when a new browser session starts (so
+it needs some traffic); the file can be edited by anyone with write access to
+`db/audit.db` (ship logs elsewhere if you need tamper-evidence). Full reference:
+[`docs/audit-log.md`](docs/audit-log.md) and the tutorial.
+
+## Testing
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+Mutating tests use a temporary SQLite file (`isolated_db`) and a temporary audit
+database (`isolated_audit_db`, autouse), never the real `db/*.db`. Role fixtures:
+`superadmin_ctx`, `admin_ctx`, `user_ctx`, `guest_ctx`, `anonymous_ctx`. Overview
+of every test file: [`tests/README.md`](tests/README.md).
+
 ## User Management
 
 The `User Management` page is visible only to Superadmin users.
@@ -658,6 +939,10 @@ The application automatically migrates an older database file by adding the
 `expire_date` column when necessary.
 
 Existing users are never overwritten by the initial seed operation.
+
+A second file, `db/audit.db`, holds the audit log (`audit_log` table) and its
+retention settings (`audit_settings` table). It is created on first use and is
+git-ignored like `auth.db`.
 
 ## Themes
 
@@ -750,12 +1035,12 @@ Quick version:
    or use `None` for a top-level item.
 6. Set `NAV_MIN_ROLE` to the minimum role required to see the page.
 7. In `app.py`: import the module, add it to the `TABS` list, **and call its
-   `server()` once inside `def server(...)`** (e.g. `tab_07.server()`).
+   `server()` once inside `def server(...)`** (e.g. `tab_08.server()`).
 
 Example:
 
 ```python
-NAV_ID = "tab_07"
+NAV_ID = "tab_08"
 NAV_LABEL = "Analytics"
 NAV_ICON = "bi-bar-chart"
 NAV_GROUP = None
@@ -783,13 +1068,22 @@ and avoids repeating manual role checks throughout the application.
 
 ## Next Steps
 
-Planned improvements for future releases:
+Done since the first release: user/security activity logging (the **Logs** tab) and
+password re-confirmation for sensitive actions.
+
+Ideas for future releases:
 
 - **Session timeout / idle auto-logout**  
-  Automatically log the user out after a period of inactivity (e.g. 10 minutes).  
-  This will improve security on shared or unattended workstations.
+  Automatically log the user out after a period of inactivity (e.g. 10 minutes)
+  to improve security on shared or unattended workstations.
 
-- **User activity logs in the User Manager**  
-  Record and display important user actions (login, logout, password changes,  
-  role updates, account creation/deletion) inside the User Manager page so  
-  Superadmins can audit account activity.
+- **Server-side decorators for `tab_01` ... `tab_03`**  
+  Today these demo tabs are only hidden by role; their callbacks should use the
+  pattern from `tab_07` before they are replaced by real, sensitive tabs.
+
+- **Shared rate limiting**  
+  The login lockout counter lives in process memory; use a shared store (e.g.
+  Redis) when running several workers.
+
+- **Scheduled log clean-up**  
+  Run the retention purge from a cron job instead of at session start.

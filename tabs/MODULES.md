@@ -202,9 +202,9 @@ is not behind the role check. Therefore:
 
 ```python
 # app.py, inside server()
-tab_07.server(logged_in_user)
+tab_08.server(logged_in_user)
 
-# tabs/tab_07.py
+# tabs/tab_08.py
 @module.server
 def _server(input, output, session, session_user):
     ...
@@ -216,6 +216,16 @@ def server(session_user):
 ```
 
 Working code: [`examples/ex14_role_aware.py`](examples/ex14_role_aware.py).
+
+> **Better for sensitive actions:** `logged_in_user` is a cache of the user as
+> it was at login; if an admin demotes or disables the account later, the cached
+> role is stale. `tab_07` and `tab_logs` therefore receive a *function*,
+> `_ensure_valid_session`, that re-reads the user from SQLite on every call:
+> `tab_08.server(_ensure_valid_session)` and `def server(get_session_user): ...`
+> with `person = get_session_user()` inside each callback. For a password
+> confirmation before the callback, add `@confirm_with_password(input,
+> get_session_user, message=...)` (see `tabs/tab_07.py` and
+> [`../docs/confirm-with-password.md`](../docs/confirm-with-password.md)).
 
 Other safety habits for every tab: validate numbers and sizes on the server
 (never trust the browser), limit upload sizes (`ex09`), and never build SQL by
@@ -260,7 +270,7 @@ You can check a module without a browser:
 
 ```python
 import importlib
-mod = importlib.import_module("tabs.tab_07")
+mod = importlib.import_module("tabs.tab_08")
 assert mod.panel() is not None          # the UI builds
 ```
 

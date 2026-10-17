@@ -1,6 +1,6 @@
 # How to add a new tab
 
-This guide walks through adding a tab (for example `tab_07`, "Reports") to the
+This guide walks through adding a tab (for example `tab_08`, "Reports") to the
 dashboard and lists **every place that has to change**. For the theory behind
 `@module.ui` / `@module.server` read [`MODULES.md`](MODULES.md); for ready-made
 code to copy see [`examples/`](examples/README.md).
@@ -11,13 +11,13 @@ code to copy see [`examples/`](examples/README.md).
 
 | # | Where | What | Required? |
 |---|-------|------|-----------|
-| 1 | `tabs/tab_07.py` (new file) | Write the tab: `NAV_*` metadata, `_ui`, `_server`, `panel()`, `server()` | yes |
+| 1 | `tabs/tab_08.py` (new file) | Write the tab: `NAV_*` metadata, `_ui`, `_server`, `panel()`, `server()` | yes |
 | 2 | `app.py` -> `from tabs import ...` | Import the new module | yes |
 | 3 | `app.py` -> `TABS = [...]` | Add the module to the list (list order = sidebar order) | yes |
-| 4 | `app.py` -> `def server(...)` | Call `tab_07.server()` once | yes (if the tab has any logic) |
+| 4 | `app.py` -> `def server(...)` | Call `tab_08.server()` once | yes (if the tab has any logic) |
 | 5 | `app.py` -> `GROUPS = {...}` | Add a group, only if you use a brand-new `NAV_GROUP` | only for new groups |
 | 6 | `app.py` -> `DEFAULT_TAB_ID` | Change the landing page | optional |
-| 7 | `tests/test_tabs.py`, `tests/test_sidebar.py` -> `TAB_MODULES` | Add `"tabs.tab_07"` so the tests cover it | recommended |
+| 7 | `tests/test_tabs.py`, `tests/test_sidebar.py` -> `TAB_MODULES` | Add `"tabs.tab_08"` so the tests cover it | recommended |
 | 8 | `i18n.py` | Add keys (or use a tab-local dictionary) | only if the tab must be bilingual |
 
 Nothing else changes: not `static/`, not `auth/`, not the Dockerfile.
@@ -29,7 +29,7 @@ Nothing else changes: not `static/`, not `auth/`, not the Dockerfile.
 
 ## 2. Step by step
 
-### Step 1 -- create `tabs/tab_07.py`
+### Step 1 -- create `tabs/tab_08.py`
 
 Copy this minimal file (or any file from `tabs/examples/`) and change the
 names:
@@ -41,18 +41,18 @@ from __future__ import annotations
 
 from shiny import module, reactive, render, ui
 
-NAV_ID = "tab_07"            # unique in the whole app
+NAV_ID = "tab_08"            # unique in the whole app
 NAV_LABEL = "Reports"        # text in the sidebar
 NAV_ICON = "bi-file-earmark-text"
 NAV_GROUP = None             # None = top level, "dashboard" = inside the Dashboard group
 NAV_MIN_ROLE = "user"        # guest | user | admin | superadmin
 
-MODULE_ID = "tab_07"         # prefix for all input/output ids of this tab
+MODULE_ID = "tab_08"         # prefix for all input/output ids of this tab
 
 
 @module.ui
 def _ui():
-    # Use SHORT local ids ("name", "go", "result"). Never type "tab_07-" yourself.
+    # Use SHORT local ids ("name", "go", "result"). Never type "tab_08-" yourself.
     return ui.div(
         ui.h3("Reports"),
         ui.input_text("name", "Report name"),
@@ -101,19 +101,20 @@ def server():
 
 ```python
 # before
-from tabs import tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_account, tab_users
+from tabs import tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_account, tab_users, tab_logs
 # after
-from tabs import tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_account, tab_users
+from tabs import tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_08, tab_account, tab_users, tab_logs
 ```
 
 ### Step 3 -- add it to `TABS`
 
 ```python
-TABS = [tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_account, tab_users]
+TABS = [tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_08, tab_account, tab_users, tab_logs]
 ```
 
-The order of this list is the order of the sidebar. Put `tab_account` and
-`tab_users` last to keep "My Account" and "User Management" at the bottom.
+The order of this list is the order of the sidebar. Put `tab_account`,
+`tab_users` and `tab_logs` last to keep "My Account", "User Management" and
+"Logs" at the bottom (`tab_logs` is deliberately the very last entry).
 
 ### Step 4 -- register the server part once
 
@@ -123,7 +124,9 @@ Inside `def server(input, output, session):` next to the other tabs:
     tab_01.server()
     ...
     tab_06.server()
-    tab_07.server()      # <-- add this line
+    tab_08.server()      # <-- add this line
+    # (tab_07 and tab_logs are registered further down, after
+    #  _ensure_valid_session is defined, because they need it)
 ```
 
 Rules:
@@ -132,8 +135,15 @@ Rules:
 * **Never** call it inside `active_panel`, a login handler, or a
   `@reactive.effect` -- it would be registered again on every click.
 * If the tab needs to know who is logged in, pass the reactive:
-  `tab_07.server(logged_in_user)` and declare `def server(session_user):` in the
+  `tab_08.server(logged_in_user)` and declare `def server(session_user):` in the
   tab (see [`examples/ex14_role_aware.py`](examples/ex14_role_aware.py)).
+* If the tab runs **sensitive actions** (decorators, password confirmation), do
+  not pass the raw reactive: pass `_ensure_valid_session` (it re-reads the user
+  from SQLite on every call, so a demoted or disabled account loses access
+  immediately) and register the tab **after** `_ensure_valid_session` is
+  defined, exactly like `tab_07` and `tab_logs`:
+  `tab_08.server(_ensure_valid_session)`. See
+  [`../tutorial/TUTORIAL.md`](../tutorial/TUTORIAL.md) (chapters 5-7).
 
 ### Step 5 -- (only for a new group) add it to `GROUPS`
 
@@ -166,7 +176,7 @@ In both `tests/test_tabs.py` and `tests/test_sidebar.py`:
 TAB_MODULES = [
     "tabs.tab_01",
     ...
-    "tabs.tab_07",      # <-- add
+    "tabs.tab_08",      # <-- add
     "tabs.tab_account",
     "tabs.tab_users",
 ]

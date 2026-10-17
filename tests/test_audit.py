@@ -156,6 +156,22 @@ class TestCoreHooks:
         assert events == ["password_changed", "password_change_failed"]
 
 
+class TestGuestDecorators:
+    """Both self-service functions must be wrapped by exactly one @guest."""
+
+    @pytest.mark.parametrize("name", ["change_own_password", "verify_own_password"])
+    def test_wrapped_once_and_denied_without_session(self, isolated_db, name):
+        function = getattr(core, name)
+        assert hasattr(function, "__wrapped__")
+        assert not hasattr(function.__wrapped__, "__wrapped__")  # not double-wrapped
+        with core.user_context(None):
+            with pytest.raises(PermissionError):
+                function("x", "y") if name == "change_own_password" else function("x")
+        row = _events(category="security")[0]
+        assert row["event"] == "access_denied"
+        assert json.loads(row["detail"])["function"] == name
+
+
 class TestLockoutSignal:
     def test_only_the_locking_failure_returns_true(self, isolated_db):
         results = [core.register_login_failure("victim") for _ in range(core.LOGIN_MAX_FAILURES + 2)]
