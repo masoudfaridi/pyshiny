@@ -95,6 +95,55 @@
     applyTheme(saved);
   }
 
+  // ---- Top bar clock --------------------------------------------------------
+  // Date, weekday and time (hours:minutes, no seconds) of the DEVICE clock (the
+  // browser's system time), checked every second so the minute flips on time:
+  //   Persian (window.APP_LANG === "fa")  ->  Jalali date, weekday name, time
+  //   English                              ->  Gregorian date, weekday, time
+  // The Jalali calendar comes from the browser's own Intl support
+  // ("fa-IR-u-ca-persian"), so no library or server round-trip is needed.
+  let clockFormatters = null;
+
+  function getClockFormatters() {
+    if (clockFormatters) return clockFormatters;
+    const isFa = (window.APP_LANG || "en") === "fa";
+    const time = { hour: "2-digit", minute: "2-digit", hourCycle: "h23" };  // minutes only
+    clockFormatters = isFa
+      ? {
+          weekday: new Intl.DateTimeFormat("fa-IR-u-ca-persian", { weekday: "long" }),
+          date: new Intl.DateTimeFormat("fa-IR-u-ca-persian",
+            { year: "numeric", month: "2-digit", day: "2-digit" }),
+          time: new Intl.DateTimeFormat("fa-IR", time)
+        }
+      : {
+          weekday: new Intl.DateTimeFormat("en-US", { weekday: "long" }),
+          // en-CA prints the Gregorian date as YYYY-MM-DD (unambiguous).
+          date: new Intl.DateTimeFormat("en-CA",
+            { year: "numeric", month: "2-digit", day: "2-digit" }),
+          time: new Intl.DateTimeFormat("en-GB", time)
+        };
+    return clockFormatters;
+  }
+
+  function updateClock() {
+    const el = document.getElementById("topbar-datetime-text");
+    if (!el) return;
+    try {
+      const f = getClockFormatters();
+      const now = new Date();
+      const text = [f.weekday.format(now), f.date.format(now), f.time.format(now)].join(" \u00b7 ");
+      if (el.textContent !== text) el.textContent = text;
+    } catch (e) {
+      el.textContent = "";  // very old browser without Intl calendars: show nothing
+    }
+  }
+
+  function startClock() {
+    if (window.__clockTimer) return;
+    window.__clockTimer = setInterval(updateClock, 1000);
+    updateClock();
+  }
+
   // ---- Sidebar toggle -------------------------------------------------------
   // The menu is a plain element (<aside id="app-sidebar">); collapsing it is a
   // CSS class on .app-shell ("sidebar-collapsed"). Desktop remembers the choice;
@@ -346,6 +395,7 @@
         buildFontPicker();
         setupSidebarToggle();
         bindLoginEnterKey();
+        updateClock();
       });
       observer.observe(document.body, { childList: true, subtree: true });
       window.__themeObserverInstalled = true;
@@ -378,7 +428,8 @@
       });
     }
 
-    // User table actions: Change opens edit modal, Delete confirms then removes.
+    // User table actions: Change opens the edit modal, Delete starts the
+    // password-confirmed deletion.
     if (!window.__userActionsBound) {
       window.__userActionsBound = true;
       document.addEventListener("click", function (event) {
@@ -394,19 +445,39 @@
         if (deleteBtn && window.Shiny) {
           event.preventDefault();
           const userId = deleteBtn.getAttribute("data-user-id");
-          const username = deleteBtn.getAttribute("data-username") || userId;
-          const confirmText = i18n(
-            "users_confirm_delete",
-            'Delete user "{username}"? This cannot be undone.'
-          ).replace("{username}", username);
-          if (!window.confirm(confirmText)) {
-            return;
-          }
+          // No browser confirm() here: the server answers with the confirmation
+          // + password dialogs of @confirm_with_password (auth/confirm.py).
           Shiny.setInputValue("user_action_delete", userId, { priority: "event" });
         }
       });
     }
   }
+
+  // Backups table (Users page): Restore / Download / Delete. The server validates
+  // the file name and asks for the password (@confirm_with_password).
+  if (!window.__backupActionsBound) {
+    window.__backupActionsBound = true;
+    document.addEventListener("click", function (event) {
+      const btn = event.target.closest(".backup-action");
+      if (!btn || !window.Shiny) return;
+      event.preventDefault();
+      // data-input names the Shiny input to fill (the Logs tab is a module, so its
+      // buttons use "tab_logs-logbackup_action"); the Users page uses the default.
+      Shiny.setInputValue(btn.getAttribute("data-input") || "backup_action", {
+        action: btn.getAttribute("data-action"),
+        name: btn.getAttribute("data-name"),
+        nonce: Date.now()
+      }, { priority: "event" });
+    });
+  }
+
+  // The Logs tab (user behaviour report) shows hours / weekdays in the browser's
+  // own time zone: tell the server the offset from UTC, in minutes.
+  document.addEventListener("shiny:connected", function () {
+    if (window.Shiny) {
+      Shiny.setInputValue("tab_logs-client_tz", -new Date().getTimezoneOffset());
+    }
+  });
 
   // Apply the saved theme immediately (also on the login page, which has no
   // theme picker) so the first paint already uses the right colours.
@@ -417,8 +488,9 @@
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", function () { init(); startClock(); });
   } else {
     init();
+    startClock();
   }
 })();

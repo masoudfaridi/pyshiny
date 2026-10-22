@@ -5,6 +5,7 @@ db/auth.db
 db/audit.db
 db/audit.db-wal
 db/audit.db-shm
+db/backups/
 
 # Local Docker environment (created from .env.example by bootstrap)
 docker/.env

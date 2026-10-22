@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 import auth.core as core
+from tests.conftest import contact
 from auth import audit
 
 
@@ -103,7 +104,7 @@ class TestCoreHooks:
     def test_denial_without_session_is_logged_as_anonymous(self, isolated_db):
         with core.user_context(None):
             with pytest.raises(PermissionError):
-                core.create_user("x" * 5, "Passw0rd!!", "user")
+                core.create_user("x" * 5, "Passw0rd!!", "user", **contact("x" * 5))
         (row,) = _events()
         assert row["event"] == "access_denied" and row["username"] is None
 
@@ -117,7 +118,7 @@ class TestCoreHooks:
         assert (row["session_id"], row["ip"], row["user_agent"]) == ("sess-1", "1.2.3.4", "UA")
 
     def test_user_lifecycle_is_logged_with_actor(self, superadmin_ctx):
-        core.create_user("newbie", "Passw0rd!!", "user")
+        core.create_user("newbie", "Passw0rd!!", "user", **contact("newbie"))
         uid = next(u["id"] for u in core.list_users() if u["username"] == "newbie")
         core.update_user(uid, "newbie", "user", True, expire_date="2030-01-01")
         core.delete_user(uid)
@@ -126,7 +127,7 @@ class TestCoreHooks:
         assert {e["username"] for e in _events(category="security")} == {"superadmin"}
 
     def test_role_change_is_critical_when_superadmin_involved(self, superadmin_ctx):
-        core.create_user("bob", "Passw0rd!!", "user")
+        core.create_user("bob", "Passw0rd!!", "user", **contact("bob"))
         uid = next(u["id"] for u in core.list_users() if u["username"] == "bob")
         core.update_user(uid, "bob", "superadmin", True)
         row = _events(category="security")[0]
@@ -134,7 +135,7 @@ class TestCoreHooks:
         assert json.loads(row["detail"])["changes"]["role"] == ["user", "superadmin"]
 
     def test_password_reset_logged_without_the_password(self, superadmin_ctx):
-        core.create_user("carol", "Passw0rd!!", "user")
+        core.create_user("carol", "Passw0rd!!", "user", **contact("carol"))
         uid = next(u["id"] for u in core.list_users() if u["username"] == "carol")
         core.update_user(uid, "carol", "user", True, new_password="Sup3rSecret!!")
         row = _events(category="security")[0]
@@ -142,7 +143,7 @@ class TestCoreHooks:
         assert json.loads(row["detail"])["changes"] == {"password_reset": True}
 
     def test_noop_update_is_not_logged(self, superadmin_ctx):
-        core.create_user("dave", "Passw0rd!!", "user")
+        core.create_user("dave", "Passw0rd!!", "user", **contact("dave"))
         uid = next(u["id"] for u in core.list_users() if u["username"] == "dave")
         before = len(_events())
         core.update_user(uid, "dave", "user", True)
@@ -215,10 +216,11 @@ class TestRetention:
         audit.log_event("auth", "old_auth", user={"role": "user", "username": "u"})
         in_60_days = datetime.now(timezone.utc) + timedelta(days=60)
         assert audit.purge_old(now=in_60_days) == 1  # only navigation (30 d) expired
-        assert {e["event"] for e in _events()} == {"old_sec", "old_auth"}
+        # (the purge itself leaves one "audit_auto_purged" entry behind)
+        assert {e["event"] for e in _events()} == {"old_sec", "old_auth", "audit_auto_purged"}
         in_400_days = datetime.now(timezone.utc) + timedelta(days=400)
         audit.purge_old(now=in_400_days)
-        assert _events() == []
+        assert {e["event"] for e in _events()} <= {"audit_auto_purged"}
 
 
 class TestRetentionSettings:
@@ -227,6 +229,8 @@ class TestRetentionSettings:
         "retention_days_auth": 180,
         "retention_days_security": 365,
         "purge_interval_hours": 1,
+        "purge_backup_enabled": 1,
+        "purge_backup_keep": 10,
     }
 
     def test_defaults(self, superadmin_ctx):

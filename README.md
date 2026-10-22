@@ -421,6 +421,7 @@ Current core dependencies:
 | `APP_LANG` | `en` | `en` (LTR) or `fa` (RTL). Beats the value in `i18n.py`; restart after changing. |
 | `PORT` | `8000` | Port inside Docker (`docker compose` publishes the same port). |
 | `AUDIT_LOG_SUPERADMIN` | `1` | `0` = do not record the superadmin's own routine activity. Account management, log clean-up and attacks on the `superadmin` account are still recorded. |
+| `ID_CODE_MODE` | `generic` | Rule for the user identification code: `generic` = 4-20 letters/digits/`-`/`_`; `national_ir` = valid 10-digit Iranian national code (checksum checked). Either way the code is unique. |
 | `TRUST_PROXY_HEADERS` | off | `1` = read the client IP from `X-Forwarded-For`. Only behind a trusted reverse proxy (otherwise spoofable). |
 
 Constants you may tune in code: `LOGIN_MAX_FAILURES` (5) and
@@ -592,6 +593,105 @@ Passwords are not stored as plaintext. The application uses PBKDF2-HMAC-SHA256
 with a per-password random salt.
 
 Change the default passwords before using the application in a real environment.
+
+## User details: identification code, email, phone
+
+Every account now stores three more fields, required when a Superadmin creates or
+edits a user (Users page, create form and edit popup):
+
+| Field | Rules |
+|-------|-------|
+| Identification code | **Unique** (case-insensitive, enforced by a unique index and checked with a friendly error), 4-20 characters. Stored upper-case. See `ID_CODE_MODE`. |
+| Email | Valid address, stored lower-case. |
+| Phone number | 7-15 digits, optional leading `+`; spaces, dashes and brackets are removed, `00` becomes `+`. |
+
+Persian/Arabic digits are converted to ASCII everywhere. The values appear in the users
+table, in the `My Account` page (a user can change their own email and phone there; only a
+Superadmin can change the identification code) and in the session user (`current_user()`).
+The audit log records the identification-code change, but only *that* email / phone
+changed, not their values.
+
+**Existing databases** are upgraded automatically at start-up (`ALTER TABLE` + unique index);
+accounts created earlier keep empty details until a Superadmin fills them in (several
+empty values are allowed, duplicates of a real code are not).
+
+## Accounts database backup and restore
+
+Users page -> *Accounts database backup* (Superadmin only; logic in `auth/backup.py`,
+guarded wrappers `create_backup`, `list_backups`, `restore_backup`, `delete_backup`,
+`read_backup`, `import_backup` in `auth/core.py`):
+
+* **Create backup** - consistent copy (SQLite online backup) saved as
+  `db/backups/auth-YYYYMMDD-HHMMSS-manual.db`.
+* **Restore** - replaces *all* accounts with the chosen backup. A safety copy of the current
+  data (`-prerestore`) is made first; backups from an older schema are upgraded; the backup
+  must be a healthy database with at least one active Superadmin, otherwise it is refused.
+  Login lock-outs are reset. If the account in use no longer exists afterwards, the session ends.
+* **Download / Import / Delete** - move backups between machines or tidy up. Imported
+  files are validated and stored as `-uploaded`; to restore one, use *Restore*.
+* Restore, delete, download and import ask for the user's password
+  (`@confirm_with_password`); every operation is written to the Security log.
+* Backup files contain password hashes: keep `db/backups/` private. In Docker the folder
+  lives inside the mounted `db/` volume. The audit log (`db/audit.db`) is not part of the backup.
+
+## Password-protected management actions
+
+`@confirm_with_password` (see the section below) now guards:
+
+* **Users page:** create user, save changes, delete user (table and popup), restore /
+  delete / download / import backup. The browser `confirm()` for deletion was replaced by
+  this dialog.
+* **Logs page:** saving the retention settings and all four "clear log" buttons.
+
+The password is asked *after* the confirmation dialog; nothing happens before it is correct,
+and the form values typed in a popup are kept so a failed save re-opens the popup.
+
+## Log size and top-bar clock
+
+* The Logs page shows the **total size of all logs in MB** at the top (and in
+  Settings and clean-up): `db/audit.db` plus its WAL files, 1 MB = 1024*1024 bytes. Clearing logs
+  compacts the file so the number really drops. API: `audit_log_size_mb()`.
+* The top bar shows a live clock **before the logout button**, taken from the device's system
+  clock, **down to the minute (no seconds)**: in Persian the weekday (شنبه، یکشنبه، ...), Jalali
+  date and time; in English the weekday, Gregorian date (`YYYY-MM-DD`) and time. It uses the browser's built-in
+  `Intl` calendars (`static/js/custom.js`, `startClock`), so no extra package is needed.
+
+## Logs: user behaviour analysis
+
+Logs page -> **User behaviour analysis** (Superadmin only; `auth.audit_analytics`, logic in
+`audit.analytics()`):
+
+* **Per user:** logins, failed logins, measured sessions, total / average / longest usage in
+  **minutes**, page views, most used page, active days, warning/critical events, last login and
+  last activity. Sorted by usage. Export to CSV.
+* **Overall:** active users, logins, failed logins (and how many were for unknown names),
+  total usage, average session, longest session, average usage per user, page views, events,
+  alerts; charts for events by log type, by hour of day, by weekday, per day, most visited
+  pages, most frequent events and failed-login reasons.
+* **Filters:** period (24 h / 7 / 30 / 90 days / all / custom dates), one user (for an individual
+  report) or all, role, log types (authentication / navigation / security), severity.
+* Hours, weekdays and days use the **browser's time zone** (shown on the page); the log tables stay in UTC.
+* Minutes are counted when a session ends (sign-out, closed browser or revoked session - all
+  three now record `duration_s`). A session that is still open is counted once it ends.
+
+## Logs database: backup, restore and automatic backup before clean-up
+
+All logs live in **one** SQLite file, `db/audit.db`. Logs page -> Settings -> *Logs database backup*
+(`auth/log_backup.py`; `create_log_backup`, `list_log_backups`, `restore_log_backup`,
+`delete_log_backup`, `read_log_backup`, `import_log_backup`):
+
+* **Create backup** -> `db/log_backups/audit-YYYYMMDD-HHMMSS-manual.db`.
+* **Restore** replaces all log rows with the backup's rows in one transaction (the retention
+  settings are kept); a `-prerestore` safety copy is made first, so a restore can be undone.
+* **Download / Load file / Delete**; loaded files are validated first. Restore, delete,
+  download and load ask for the password (`@confirm_with_password`).
+* **Automatic backup before the automatic clean-up:** right before `purge_old()` deletes expired
+  rows it copies the whole log database into the special folder **`db/log_backups/auto/`**
+  (`audit-...-auto.db`). If the copy fails, nothing is deleted. Settings (Logs -> Settings):
+  switch on/off (default on) and how many automatic backups to keep (default 10, oldest removed).
+  Nothing to delete -> no backup is made. The purge itself is logged (`audit_auto_purged`).
+* Manual "clear log" buttons are not backed up automatically (take a manual backup first if you
+  want one).
 
 ## Self-Service Password Change
 

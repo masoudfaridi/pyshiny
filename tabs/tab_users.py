@@ -25,6 +25,9 @@ def panel():
         ui.div(
             ui.h4(t("users_create_heading")),
             ui.input_text("new_username", t("username")),
+            ui.input_text("new_id_code", t("id_code")),
+            ui.input_text("new_email", t("email")),
+            ui.input_text("new_phone", t("phone")),
             ui.input_password("new_password", t("password")),
             ui.input_password("new_password_confirm", t("confirm_password")),
             ui.input_select(
@@ -49,6 +52,31 @@ def panel():
             t("users_existing_hint"),
             class_="text-muted small",
         ),
-        ui.output_ui("users_table"),
+        ui.div(ui.output_ui("users_table"), class_="table-scroll"),
+        # ---- accounts database backup / restore (all actions password-protected) ----
+        ui.h4(t("backup_title"), class_="mt-4"),
+        ui.p(t("backup_intro"), class_="text-muted small"),
+        ui.div(
+            ui.div(
+                ui.input_action_button(
+                    "backup_create", t("backup_create"), class_="btn btn-primary"
+                ),
+                class_="backup-toolbar",
+            ),
+            ui.div(
+                ui.input_file(
+                    "backup_upload",
+                    t("backup_upload_label"),
+                    accept=[".db", ".sqlite", ".sqlite3"],
+                    multiple=False,
+                ),
+                ui.input_action_button(
+                    "backup_import", t("backup_import"), class_="btn btn-secondary"
+                ),
+                class_="backup-toolbar",
+            ),
+            class_="user-form-card",
+        ),
+        ui.div(ui.output_ui("backups_table"), class_="table-scroll mt-3"),
         class_="tab-pane-content",
     )

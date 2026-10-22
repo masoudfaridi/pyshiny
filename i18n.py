@@ -200,6 +200,87 @@ STRINGS: dict[str, dict[str, str]] = {
         "err_delete_self": "You cannot delete the account you are currently using.",
         "err_delete_last_superadmin": "The last active Superadmin cannot be deleted.",
 
+        # ---- Account details (identification code, e-mail, phone) ----
+        "id_code": "Identification code",
+        "email": "Email",
+        "phone": "Phone number",
+        "users_col_id_code": "Identification code",
+        "users_col_email": "Email",
+        "users_col_phone": "Phone",
+        "users_missing_info": "Not set",
+        "users_scroll_hint": "Identification code must be unique.",
+        "err_id_code_required": "Identification code is required.",
+        "err_id_code_format": (
+            "Identification code must be 4-20 characters: letters, numbers, "
+            "hyphens or underscores."
+        ),
+        "err_id_code_national": "Identification code must be a valid 10-digit national code.",
+        "err_id_code_exists": "This identification code is already used by another account.",
+        "err_email_required": "Email is required.",
+        "err_email_format": "Email address is not valid.",
+        "err_phone_required": "Phone number is required.",
+        "err_phone_format": "Phone number must contain 7-15 digits (a leading + is allowed).",
+
+        # ---- My Account: profile ----
+        "account_profile_heading": "My details",
+        "account_profile_intro": "Your email and phone can be updated here.",
+        "account_profile_save": "Save details",
+        "account_profile_saved": "Your details were saved.",
+        "account_id_code_note": "Only a Superadmin can change the identification code.",
+        "account_not_set": "Not set",
+
+        # ---- User Management: protected actions (password confirmation) ----
+        "users_confirm_create": 'Create user "{username}"?',
+        "users_confirm_update": 'Save the changes to user "{username}"?',
+
+        # ---- Accounts database backup / restore ----
+        "backup_title": "Accounts database backup",
+        "backup_intro": (
+            "Save a copy of the accounts database (users, roles, password hashes) "
+            "and restore it later. Restoring replaces ALL current accounts; a safety "
+            "copy of the current database is made first. Backup files are stored in "
+            "db/backups/ and contain password hashes: keep them private."
+        ),
+        "backup_create": "Create backup now",
+        "backup_created": "Backup created: {name}",
+        "backup_upload_label": "Import a backup file (.db)",
+        "backup_import": "Import file",
+        "backup_imported": "File imported as backup: {name}",
+        "backup_no_file": "Choose a backup file first.",
+        "backup_col_name": "File",
+        "backup_col_created": "Created (UTC)",
+        "backup_col_size": "Size",
+        "backup_col_type": "Type",
+        "backup_col_actions": "Actions",
+        "backup_type_manual": "Manual",
+        "backup_type_prerestore": "Before restore",
+        "backup_type_uploaded": "Imported",
+        "backup_restore": "Restore",
+        "backup_download": "Download",
+        "backup_delete": "Delete",
+        "backup_none": "No backups yet.",
+        "backup_restored": (
+            "Accounts restored from {name} ({users} accounts). "
+            "Safety copy of the previous data: {safety}."
+        ),
+        "backup_deleted": "Backup deleted.",
+        "backup_confirm_restore": (
+            'Restore the accounts database from "{name}"? All current accounts will be '
+            "replaced (a safety copy is made first)."
+        ),
+        "backup_confirm_delete": 'Delete the backup "{name}"? This cannot be undone.',
+        "backup_confirm_import": "Import the selected file as a new backup?",
+        "backup_confirm_download": 'Download the backup "{name}"? It contains password hashes.',
+        "backup_download_title": "Download ready",
+        "backup_download_text": "Your backup file is ready:",
+        "backup_close": "Close",
+        "backup_denied": "Access denied: only Superadmin can manage backups.",
+        "err_backup_name": "Invalid backup file name.",
+        "err_backup_missing": "Backup file not found.",
+        "err_backup_invalid": "This file is not a valid backup of this database.",
+        "err_backup_no_superadmin": "The backup contains no active Superadmin account.",
+        "err_backup_too_large": "The file is too large (maximum {n} MB).",
+
         # ---- Password re-confirmation (auth/confirm.py: @confirm_with_password) ----
         "reauth_title": "Confirm action",
         "reauth_continue": "Continue",
@@ -372,6 +453,87 @@ STRINGS: dict[str, dict[str, str]] = {
         "err_last_superadmin": "دست‌کم یک مدیر کل فعال باید باقی بماند.",
         "err_delete_self": "نمی‌توانید حسابی را که با آن وارد شده‌اید حذف کنید.",
         "err_delete_last_superadmin": "آخرین مدیر کل فعال را نمی‌توان حذف کرد.",
+
+        # ---- اطلاعات حساب (کد شناسایی، ایمیل، تلفن) ----
+        "id_code": "کد شناسایی",
+        "email": "ایمیل",
+        "phone": "شماره تلفن",
+        "users_col_id_code": "کد شناسایی",
+        "users_col_email": "ایمیل",
+        "users_col_phone": "تلفن",
+        "users_missing_info": "ثبت نشده",
+        "users_scroll_hint": "کد شناسایی باید یکتا باشد.",
+        "err_id_code_required": "کد شناسایی الزامی است.",
+        "err_id_code_format": (
+            "کد شناسایی باید ۴ تا ۲۰ نویسه و شامل حروف انگلیسی، اعداد، "
+            "خط تیره یا زیرخط باشد."
+        ),
+        "err_id_code_national": "کد شناسایی باید یک کد ملی ۱۰ رقمی معتبر باشد.",
+        "err_id_code_exists": "این کد شناسایی قبلاً برای حساب دیگری ثبت شده است.",
+        "err_email_required": "ایمیل الزامی است.",
+        "err_email_format": "نشانی ایمیل معتبر نیست.",
+        "err_phone_required": "شماره تلفن الزامی است.",
+        "err_phone_format": "شماره تلفن باید شامل ۷ تا ۱۵ رقم باشد (علامت + در ابتدا مجاز است).",
+
+        # ---- حساب کاربری من: اطلاعات شخصی ----
+        "account_profile_heading": "اطلاعات من",
+        "account_profile_intro": "ایمیل و شماره تلفن خود را می‌توانید از اینجا تغییر دهید.",
+        "account_profile_save": "ذخیره اطلاعات",
+        "account_profile_saved": "اطلاعات شما ذخیره شد.",
+        "account_id_code_note": "فقط مدیر کل می‌تواند کد شناسایی را تغییر دهد.",
+        "account_not_set": "ثبت نشده",
+
+        # ---- مدیریت کاربران: عملیات محافظت‌شده (تأیید با رمز عبور) ----
+        "users_confirm_create": "کاربر «{username}» ایجاد شود؟",
+        "users_confirm_update": "تغییرات کاربر «{username}» ذخیره شود؟",
+
+        # ---- پشتیبان‌گیری و بازنشانی دیتابیس حساب‌ها ----
+        "backup_title": "پشتیبان‌گیری از دیتابیس حساب‌ها",
+        "backup_intro": (
+            "از دیتابیس حساب‌ها (کاربران، نقش‌ها و هش رمزها) نسخه‌ی پشتیبان بگیرید و "
+            "بعداً آن را بازنشانی کنید. بازنشانی «همه» حساب‌های فعلی را جایگزین می‌کند؛ "
+            "پیش از آن یک نسخه‌ی ایمنی از وضعیت فعلی ساخته می‌شود. فایل‌های پشتیبان در "
+            "پوشه‌ی db/backups/ ذخیره می‌شوند و شامل هش رمزها هستند؛ آن‌ها را محرمانه نگه دارید."
+        ),
+        "backup_create": "ساخت پشتیبان",
+        "backup_created": "پشتیبان ساخته شد: {name}",
+        "backup_upload_label": "وارد کردن فایل پشتیبان (.db)",
+        "backup_import": "وارد کردن فایل",
+        "backup_imported": "فایل به‌عنوان پشتیبان وارد شد: {name}",
+        "backup_no_file": "ابتدا یک فایل پشتیبان انتخاب کنید.",
+        "backup_col_name": "فایل",
+        "backup_col_created": "زمان ساخت (UTC)",
+        "backup_col_size": "حجم",
+        "backup_col_type": "نوع",
+        "backup_col_actions": "عملیات",
+        "backup_type_manual": "دستی",
+        "backup_type_prerestore": "پیش از بازنشانی",
+        "backup_type_uploaded": "واردشده",
+        "backup_restore": "بازنشانی",
+        "backup_download": "دانلود",
+        "backup_delete": "حذف",
+        "backup_none": "هنوز پشتیبانی وجود ندارد.",
+        "backup_restored": (
+            "حساب‌ها از {name} بازنشانی شدند ({users} حساب). "
+            "نسخه‌ی ایمنی داده‌های قبلی: {safety}."
+        ),
+        "backup_deleted": "پشتیبان حذف شد.",
+        "backup_confirm_restore": (
+            "دیتابیس حساب‌ها از «{name}» بازنشانی شود؟ همه‌ی حساب‌های فعلی جایگزین "
+            "می‌شوند (پیش از آن نسخه‌ی ایمنی ساخته می‌شود)."
+        ),
+        "backup_confirm_delete": "پشتیبان «{name}» حذف شود؟ این کار قابل بازگشت نیست.",
+        "backup_confirm_import": "فایل انتخاب‌شده به‌عنوان پشتیبان جدید وارد شود؟",
+        "backup_confirm_download": "پشتیبان «{name}» دانلود شود؟ این فایل شامل هش رمزهاست.",
+        "backup_download_title": "دانلود آماده است",
+        "backup_download_text": "فایل پشتیبان شما آماده است:",
+        "backup_close": "بستن",
+        "backup_denied": "دسترسی غیرمجاز: فقط مدیر کل می‌تواند پشتیبان‌ها را مدیریت کند.",
+        "err_backup_name": "نام فایل پشتیبان نامعتبر است.",
+        "err_backup_missing": "فایل پشتیبان پیدا نشد.",
+        "err_backup_invalid": "این فایل یک پشتیبان معتبر از این دیتابیس نیست.",
+        "err_backup_no_superadmin": "این پشتیبان هیچ حساب مدیر کل فعالی ندارد.",
+        "err_backup_too_large": "حجم فایل بیش از حد مجاز است (حداکثر {n} مگابایت).",
 
         # ---- تأیید مجدد با رمز عبور (auth/confirm.py: @confirm_with_password) ----
         "reauth_title": "تأیید عملیات",

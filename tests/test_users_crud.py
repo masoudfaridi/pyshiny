@@ -6,39 +6,40 @@ import sqlite3
 import pytest
 
 import auth.core as core
+from tests.conftest import contact
 
 
 class TestCreateUser:
     def test_create_success(self, superadmin_ctx):
-        core.create_user("newbie", "Passw0rd!", "user", expire_date="2099-01-01")
+        core.create_user("newbie", "Passw0rd!", "user", expire_date="2099-01-01", **contact("newbie"))
         session = core.authenticate("newbie", "Passw0rd!")
         assert session is not None
         assert session["role"] == "user"
         assert session["expire_date"] == "2099-01-01"
 
     def test_duplicate_username(self, superadmin_ctx):
-        core.create_user("dupuser", "Passw0rd1", "user")
+        core.create_user("dupuser", "Passw0rd1", "user", **contact("dupuser"))
         with pytest.raises(Exception):
-            core.create_user("dupuser", "Passw0rd2", "user")
+            core.create_user("dupuser", "Passw0rd2", "user", **contact("dupuser_2"))
 
     def test_invalid_role(self, superadmin_ctx):
         with pytest.raises(ValueError, match="[Ii]nvalid role"):
-            core.create_user("xuser", "Passw0rd1", "root")
+            core.create_user("xuser", "Passw0rd1", "root", **contact("xuser"))
 
     def test_invalid_username(self, superadmin_ctx):
         with pytest.raises(ValueError, match="Username"):
-            core.create_user("x", "Passw0rd1", "user")
+            core.create_user("x", "Passw0rd1", "user", **contact("x"))
 
     def test_short_password(self, superadmin_ctx):
         with pytest.raises(ValueError, match="at least"):
-            core.create_user("shortpwd", "123", "user")
+            core.create_user("shortpwd", "123", "user", **contact("shortpwd"))
 
     def test_non_superadmin_forbidden(self, admin_ctx):
         with pytest.raises(PermissionError):
-            core.create_user("blocked", "Passw0rd1", "user")
+            core.create_user("blocked", "Passw0rd1", "user", **contact("blocked"))
 
     def test_superadmin_created_without_expiry(self, superadmin_ctx):
-        core.create_user("sa2", "Passw0rd1", "superadmin", expire_date="2099-01-01")
+        core.create_user("sa2", "Passw0rd1", "superadmin", expire_date="2099-01-01", **contact("sa2"))
         # normalize forces None for superadmin
         with sqlite3.connect(core.DB_PATH) as con:
             row = con.execute(
@@ -64,7 +65,7 @@ class TestListUsers:
 
 class TestUpdateUser:
     def test_rename_and_role(self, superadmin_ctx):
-        core.create_user("toupdate", "Passw0rd1", "user")
+        core.create_user("toupdate", "Passw0rd1", "user", **contact("toupdate"))
         uid = core.authenticate("toupdate", "Passw0rd1")["id"]
         core.update_user(uid, "renamed", "admin", True, new_password="", expire_date=None)
         assert core.authenticate("toupdate", "Passw0rd1") is None
@@ -73,14 +74,14 @@ class TestUpdateUser:
         assert session["role"] == "admin"
 
     def test_password_change_by_admin(self, superadmin_ctx):
-        core.create_user("pwchange", "OldPass12", "user")
+        core.create_user("pwchange", "OldPass12", "user", **contact("pwchange"))
         uid = core.authenticate("pwchange", "OldPass12")["id"]
         core.update_user(uid, "pwchange", "user", True, new_password="NewPass99", expire_date=None)
         assert core.authenticate("pwchange", "OldPass12") is None
         assert core.authenticate("pwchange", "NewPass99") is not None
 
     def test_deactivate(self, superadmin_ctx):
-        core.create_user("todeact", "Passw0rd1", "user")
+        core.create_user("todeact", "Passw0rd1", "user", **contact("todeact"))
         uid = core.authenticate("todeact", "Passw0rd1")["id"]
         core.update_user(uid, "todeact", "user", False, new_password="", expire_date=None)
         assert core.authenticate("todeact", "Passw0rd1") is None
@@ -102,7 +103,7 @@ class TestUpdateUser:
 
 class TestDeleteUser:
     def test_delete_success(self, superadmin_ctx):
-        core.create_user("todelete", "Passw0rd1", "user")
+        core.create_user("todelete", "Passw0rd1", "user", **contact("todelete"))
         uid = core.authenticate("todelete", "Passw0rd1")["id"]
         core.delete_user(uid)
         assert core.authenticate("todelete", "Passw0rd1") is None
@@ -119,13 +120,13 @@ class TestDeleteUser:
         remaining one cannot be deleted by another session – simulate by
         switching context to a non-self superadmin attempting to delete the last.
         """
-        core.create_user("sa_other", "Passw0rd1", "superadmin")
+        core.create_user("sa_other", "Passw0rd1", "superadmin", **contact("sa_other"))
         other = core.authenticate("sa_other", "Passw0rd1")
         assert other is not None
         # Two active superadmins: deleting the other is OK
         core.delete_user(other["id"])
         # Recreate as the sole extra, then remove until one remains and protect it
-        core.create_user("sa_other2", "Passw0rd1", "superadmin")
+        core.create_user("sa_other2", "Passw0rd1", "superadmin", **contact("sa_other2"))
         other2 = core.authenticate("sa_other2", "Passw0rd1")
         # Switch to other2 and try to delete original superadmin while both active – OK
         with core.user_context(other2):

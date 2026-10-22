@@ -6,6 +6,21 @@ from pathlib import Path
 
 import pytest
 
+def contact(name: str) -> dict:
+    """Valid, unique identification code / e-mail / phone derived from a username.
+
+    ``create_user`` requires these three keyword arguments; tests spread them
+    in with ``core.create_user("bob", "Passw0rd1", "user", **contact("bob"))``.
+    """
+    import zlib
+
+    return {
+        "id_code": f"ID-{name}".upper(),
+        "email": f"{name}@example.com",
+        "phone": "09" + str(zlib.crc32(name.encode()) % 10**9).zfill(9),
+    }
+
+
 # Ensure project root is importable as `auth`, `tabs`, `app`.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:

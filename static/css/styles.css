@@ -962,3 +962,48 @@ html .sidebar-link.active:focus { color:var(--active-text); background:var(--acc
 @media (max-width: 640px) {
   .topbar-left .brand-text { display: none; }   /* keep the toggle reachable on phones */
 }
+
+/* ---------- Top bar clock (date + weekday + time, see custom.js startClock) ---------- */
+.topbar-datetime {
+  display:inline-flex; align-items:center; gap:.4rem; white-space:nowrap;
+  padding:.35rem .65rem; margin-inline-end:.45rem; border-radius:999px;
+  font-size:.78rem; background:var(--surface-2); color:var(--text);
+  font-variant-numeric:tabular-nums;
+}
+.topbar-datetime .bi { color:var(--accent); }
+.topbar-datetime-text:empty, .topbar-datetime:has(.topbar-datetime-text:empty) { display:none; }
+@media (max-width: 1100px) { .topbar-datetime .bi { display:none; } }
+@media (max-width: 767.98px) { .topbar-datetime { display:none; } }
+
+/* ---------- Users page: wide tables, backup card, profile card ---------- */
+.table-scroll { overflow-x:auto; max-width:100%; }
+.users-table .ltr-cell { text-align:start; unicode-bidi:plaintext; white-space:nowrap; }
+.backup-toolbar { display:flex; flex-wrap:wrap; align-items:flex-end; gap:.75rem 1rem; }
+.backup-toolbar + .backup-toolbar { margin-top:1rem; padding-top:1rem; border-top:1px solid var(--border); }
+.backup-toolbar .shiny-input-container { margin-bottom:0; }
+.backup-action { white-space:nowrap; }
+.profile-details { display:grid; grid-template-columns:max-content 1fr; gap:.25rem 1rem; margin-bottom:.5rem; }
+.profile-details dt { color:var(--text-muted); font-weight:500; }
+.profile-details dd { margin:0; }
+.log-size-value { font-variant-numeric:tabular-nums; }
+
+/* ---------- Logs: user behaviour report (cards, bar charts) ---------- */
+.stat-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:.75rem; margin:1rem 0; }
+.stat-card { background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:.7rem .9rem; }
+.stat-card .stat-value { font-size:1.45rem; font-weight:700; line-height:1.2; font-variant-numeric:tabular-nums; }
+.stat-card .stat-label { font-size:.78rem; color:var(--text-muted); }
+.chart-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:1rem; margin-top:1rem; }
+.chart-card { background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:.8rem 1rem; }
+.chart-card h6 { margin:0 0 .6rem; font-weight:600; }
+.hbar-row { display:grid; grid-template-columns:minmax(70px, 38%) 1fr auto; align-items:center; gap:.5rem; margin:.25rem 0; font-size:.85rem; }
+.hbar-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hbar-track { background:var(--border); border-radius:4px; height:.7rem; overflow:hidden; }
+.hbar-fill { background:var(--accent); height:100%; border-radius:4px; }
+.hbar-value { font-variant-numeric:tabular-nums; min-width:2.2rem; text-align:end; }
+.vchart { display:flex; align-items:flex-end; gap:2px; height:110px; }
+.vchart .vbar { flex:1; background:var(--accent); min-height:2px; border-radius:2px 2px 0 0; opacity:.9; }
+.vchart-labels { display:flex; gap:2px; font-size:.65rem; color:var(--text-muted); margin-top:.2rem; }
+.vchart-labels span { flex:1; text-align:center; overflow:hidden; }
+.log-size-banner { margin:.25rem 0 1rem; }
+.analytics-note { font-size:.8rem; color:var(--text-muted); }
+.log-checks .shiny-input-container { margin-bottom:0; }

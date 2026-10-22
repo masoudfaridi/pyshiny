@@ -36,9 +36,9 @@ Adding a new tab
 3. If it should start a *new* collapsible group, add one line to GROUPS.
 """
 
+import base64
 import json
 import time
-from datetime import date
 from pathlib import Path
 
 from shiny import App, reactive, render, ui
@@ -49,20 +49,34 @@ from auth import (
     ROLE_LEVELS,
     audit,
     authenticate,
+    backup,
     change_own_password,
     clear_login_failures,
+    confirm_with_password,
+    create_backup,
     create_user,
     current_role,
     current_user,
+    delete_backup,
     delete_user,
     generate_captcha,
     get_user_by_id,
+    import_backup,
     is_login_locked,
+    list_backups,
     list_users,
+    read_backup,
     refresh_session_user,
     register_login_failure,
+    restore_backup,
+    update_own_profile,
     update_user,
     user_context,
+    validate_email,
+    validate_id_code,
+    validate_password,
+    validate_phone,
+    validate_username,
     verify_captcha,
 )
 
@@ -238,6 +252,14 @@ def dashboard_ui(role: str) -> ui.Tag:
                 ui.tags.div(
                     ui.tags.span(role_label(current_role()), class_="role-badge"),
                     ui.tags.span(current_user()["username"], class_="username-badge"),
+                    # Live clock, filled by static/js/custom.js from the device's
+                    # clock: Persian -> Jalali date + weekday + time; English -> Gregorian.
+                    ui.tags.span(
+                        ui.tags.i(class_="bi bi-calendar3"),
+                        ui.tags.span("", id="topbar-datetime-text", class_="topbar-datetime-text"),
+                        id="topbar-datetime",
+                        class_="topbar-datetime",
+                    ),
                     ui.input_action_button(
                         "logout_button",
                         ui.tags.span(
@@ -350,6 +372,7 @@ app_ui = ui.page_fillable(
         f"document.documentElement.setAttribute('dir','{DIRECTION}');"
         f"document.documentElement.setAttribute('lang','{APP_LANG}');"
         f"window.APP_DIR_MODE='{APP_DIR_MODE}';"
+        f"window.APP_LANG='{APP_LANG}';"
         f"window.APP_I18N={_inline_json(js_bundle())};"
     ),
     build_app_shell(),
@@ -362,8 +385,13 @@ def server(input, output, session):
     login_error = reactive.Value("")
     create_message = reactive.Value("")
     account_message = reactive.Value("")
+    profile_message = reactive.Value("")
     users_refresh = reactive.Value(0)
+    backups_refresh = reactive.Value(0)
     editing_user_id = reactive.Value(None)
+    # Values captured when a password-protected button is clicked and used when
+    # the callback runs after the password was confirmed (per browser session).
+    pending: dict = {}
     edit_modal_message = reactive.Value("")
     captcha_hash = reactive.Value(None)
     captcha_expires = reactive.Value(None)
@@ -458,7 +486,7 @@ def server(input, output, session):
         if fresh is None:
             if user is not None:
                 _log("security", "session_revoked", user, severity="warning",
-                     detail={"reason": _revoke_reason(user)})
+                     detail={"reason": _revoke_reason(user), "duration_s": _session_seconds()})
                 state["login_at"] = None
                 state["last_tab"] = None
                 logged_in_user.set(None)
@@ -470,6 +498,9 @@ def server(input, output, session):
             or fresh["role"] != user.get("role")
             or int(fresh["is_active"]) != int(user.get("is_active") or 0)
             or fresh.get("expire_date") != user.get("expire_date")
+            or fresh.get("id_code") != user.get("id_code")
+            or fresh.get("email") != user.get("email")
+            or fresh.get("phone") != user.get("phone")
         ):
             logged_in_user.set(dict(fresh))
         return fresh
@@ -591,6 +622,8 @@ def server(input, output, session):
         login_error.set("")
         create_message.set("")
         account_message.set("")
+        profile_message.set("")
+        pending.clear()
 
     @render.ui
     def active_panel():
@@ -641,6 +674,29 @@ def server(input, output, session):
             state["last_tab"] = nav_id
             _log("navigation", "tab_opened", current, detail={"tab": nav_id})
 
+    @render.ui
+    def profile_message_ui():
+        message = profile_message()
+        if not message:
+            return ui.div()
+        return ui.div(message, class_="user-create-message")
+
+    @reactive.effect
+    @reactive.event(input.profile_save_button)
+    def _update_profile_event():
+        # Own e-mail / phone. The identification code is not editable here.
+        current = _ensure_valid_session()
+        if not current:
+            return
+        try:
+            with user_context(current):
+                update_own_profile(input.profile_email(), input.profile_phone())
+        except (PermissionError, ValueError) as exc:
+            profile_message.set(str(exc))
+            return
+        profile_message.set(t("account_profile_saved"))
+        _ensure_valid_session()  # refresh the cached session user (e-mail / phone)
+
     @reactive.effect
     @reactive.event(input.change_password_button)
     def _change_password_event():
@@ -665,45 +721,76 @@ def server(input, output, session):
         except (PermissionError, ValueError) as exc:
             account_message.set(str(exc))
 
+    def _toast(message: str, kind: str = "message") -> None:
+        ui.notification_show(message, type=kind, duration=6)
+
+    def _create_form() -> dict:
+        """Read the create-user form (raises ValueError on invalid input)."""
+        new_password = input.new_password()
+        if new_password != input.new_password_confirm():
+            raise ValueError(t("users_create_mismatch"))
+        role = input.new_role()
+        expire_date = None
+        if role != "superadmin":
+            try:
+                if input.new_expire_enabled():
+                    expire_date = input.new_expire_date()
+            except (AttributeError, TypeError):
+                expire_date = None
+        return {
+            "username": validate_username(input.new_username()),
+            "password": validate_password(new_password, strict=False),
+            "role": role,
+            "expire_date": str(expire_date) if expire_date else None,
+            "id_code": validate_id_code(input.new_id_code()),
+            "email": validate_email(input.new_email()),
+            "phone": validate_phone(input.new_phone()),
+        }
+
     @reactive.effect
     @reactive.event(input.create_user)
     def _create_user_event():
-        # Read the current session before attempting a protected operation.
+        # Step 1 (click): read the session and check the form. Mistakes are
+        # reported in the form, before any password is asked.
+        # Step 2: _run_create_user() -- confirmation dialog + the user's password.
         current = _ensure_valid_session()
         if not current:
             return
-
-        new_password = input.new_password()
-        confirm_password = input.new_password_confirm()
-        if new_password != confirm_password:
-            create_message.set(t("users_create_mismatch"))
-            return
-
         try:
-            # The @superadmin decorator performs the actual authorization check.
-            with user_context(current):
-                role = input.new_role()
-                expire_date = None
-                if role != "superadmin":
-                    try:
-                        if input.new_expire_enabled():
-                            expire_date = input.new_expire_date()
-                    except (AttributeError, TypeError):
-                        expire_date = None
-                create_user(
-                    input.new_username(),
-                    new_password,
-                    role,
-                    str(expire_date) if expire_date else None,
-                )
-            create_message.set(t("users_created"))
-            users_refresh.set(users_refresh() + 1)
-        except PermissionError:
-            create_message.set(t("users_denied_create"))
-        except sqlite3.IntegrityError:
-            create_message.set(t("users_exists"))
+            form = _create_form()
         except ValueError as exc:
             create_message.set(str(exc))
+            return
+        create_message.set("")
+        pending["create_username"] = form["username"]
+        _run_create_user()
+
+    @confirm_with_password(
+        input, _ensure_valid_session,
+        message=lambda: t("users_confirm_create", username=pending.get("create_username", "")),
+        required_role="superadmin",
+    )
+    def _run_create_user():
+        # Runs ONLY after the dialog and the correct password (see auth/confirm.py).
+        try:
+            form = _create_form()
+            create_user(
+                form["username"], form["password"], form["role"], form["expire_date"],
+                id_code=form["id_code"], email=form["email"], phone=form["phone"],
+            )
+        except PermissionError:
+            create_message.set(t("users_denied_create"))
+            return
+        except sqlite3.IntegrityError:
+            create_message.set(t("users_exists"))
+            return
+        except ValueError as exc:
+            create_message.set(str(exc))
+            return
+        create_message.set(t("users_created"))
+        users_refresh.set(users_refresh() + 1)
+        for field in ("new_username", "new_id_code", "new_email", "new_phone"):
+            ui.update_text(field, value="")
 
     @render.ui
     def user_create_message():
@@ -765,6 +852,15 @@ def server(input, output, session):
                     "edit_username",
                     t("username"),
                     value=selected["username"],
+                ),
+                ui.input_text(
+                    "edit_id_code", t("id_code"), value=selected.get("id_code") or ""
+                ),
+                ui.input_text(
+                    "edit_email", t("email"), value=selected.get("email") or ""
+                ),
+                ui.input_text(
+                    "edit_phone", t("phone"), value=selected.get("phone") or ""
                 ),
                 ui.input_select(
                     "edit_role",
@@ -894,12 +990,27 @@ def server(input, output, session):
             return
         editing_user_id.set(selected_id)
         edit_modal_message.set("")
+        pending.pop("edit", None)  # drop a half-finished edit (it may hold a password)
         ui.modal_show(_build_edit_modal(selected))
+
+    def _ask_delete(selected_id: int, current: dict) -> None:
+        """Remember who is to be deleted, then open the password-protected flow."""
+        try:
+            row = _load_user_row(selected_id, current)
+        except PermissionError:
+            create_message.set(t("users_denied_delete"))
+            return
+        if row is None:
+            create_message.set(t("users_not_found"))
+            return
+        pending["delete"] = {"id": int(selected_id), "username": row["username"]}
+        _run_delete_user()
 
     @reactive.effect
     @reactive.event(input.user_action_delete)
     def _delete_from_table():
-        # Delete directly from the table Delete button (after JS confirm).
+        # Delete button in the users table. (The browser-side confirm() was removed:
+        # the dialog of @confirm_with_password is the confirmation now.)
         current = _ensure_valid_session()
         if not current:
             return
@@ -907,22 +1018,68 @@ def server(input, output, session):
             selected_id = int(input.user_action_delete())
         except (TypeError, ValueError):
             return
+        _ask_delete(selected_id, current)
+
+    @reactive.effect
+    @reactive.event(input.delete_user)
+    def _delete_user_event():
+        # Delete button inside the edit modal.
+        current = _ensure_valid_session()
+        if not current:
+            return
+        selected_id = editing_user_id()
+        if selected_id is None:
+            return
+        _ask_delete(int(selected_id), current)
+
+    @confirm_with_password(
+        input, _ensure_valid_session,
+        message=lambda: t("users_confirm_delete", username=pending.get("delete", {}).get("username", "")),
+        required_role="superadmin",
+    )
+    def _run_delete_user():
+        target = pending.pop("delete", None)
+        if not target:
+            return
         try:
-            with user_context(current):
-                delete_user(selected_id)
-            create_message.set(t("users_deleted"))
-            users_refresh.set(users_refresh() + 1)
-            editing_user_id.set(None)
-            ui.modal_remove()
+            delete_user(target["id"])
         except PermissionError:
-            create_message.set(t("users_denied_delete"))
+            _toast(t("users_denied_delete"), "error")
+            return
         except ValueError as exc:
-            create_message.set(str(exc))
+            _toast(str(exc), "error")
+            return
+        create_message.set(t("users_deleted"))
+        _toast(t("users_deleted"))
+        users_refresh.set(users_refresh() + 1)
+        editing_user_id.set(None)
+
+    def _reopen_edit_modal(form: dict, message: str, current: dict) -> None:
+        """Show the edit popup again (with what was typed) after a failed save."""
+        selected = _load_user_row(form["id"], current)
+        if selected is None:
+            _toast(message, "error")
+            return
+        selected = {
+            **selected,
+            "username": form["username"],
+            "role": form["role"],
+            "is_active": int(form["is_active"]),
+            "expire_date": form["expire_date"],
+            "id_code": form["id_code"],
+            "email": form["email"],
+            "phone": form["phone"],
+        }
+        editing_user_id.set(form["id"])
+        edit_modal_message.set(message)
+        ui.modal_show(_build_edit_modal(selected))
 
     @reactive.effect
     @reactive.event(input.save_user)
     def _save_user_event():
-        # Save the account currently open in the edit modal.
+        # Step 1 (click): read + check the popup and keep a copy of it (the popup
+        # is replaced by the confirmation dialog). Format mistakes stay in the popup.
+        # Step 2: _run_save_user() -- confirmation dialog + the user's password.
         current = _ensure_valid_session()
         if not current:
             return
@@ -937,75 +1094,71 @@ def server(input, output, session):
             edit_modal_message.set(t("edit_mismatch"))
             return
 
-        try:
-            with user_context(current):
-                role = input.edit_role()
+        role = input.edit_role()
+        expire_date = None
+        if role != "superadmin":
+            try:
+                if input.edit_expire_enabled():
+                    expire_date = input.edit_expire_date()
+            except (AttributeError, TypeError):
                 expire_date = None
-                if role != "superadmin":
-                    try:
-                        if input.edit_expire_enabled():
-                            expire_date = input.edit_expire_date()
-                    except (AttributeError, TypeError):
-                        expire_date = None
-                update_user(
-                    int(selected_id),
-                    input.edit_username(),
-                    role,
-                    input.edit_is_active(),
-                    new_password or "",
-                    str(expire_date) if expire_date else None,
-                )
 
-            # Refresh the session when the currently logged-in account is edited.
-            if int(selected_id) == int(current["id"]):
-                current["username"] = input.edit_username().strip()
-                current["role"] = role
-                current["is_active"] = int(input.edit_is_active())
-                current["expire_date"] = str(expire_date) if expire_date else None
-                expired = (
-                    current["role"] != "superadmin"
-                    and current["expire_date"]
-                    and str(current["expire_date"]) < date.today().isoformat()
-                )
-                if not current["is_active"] or expired:
-                    logged_in_user.set(None)
-                    ui.modal_remove()
-                    return
-                logged_in_user.set(dict(current))
-
-            create_message.set(t("users_updated"))
-            edit_modal_message.set("")
-            users_refresh.set(users_refresh() + 1)
-            ui.modal_remove()
-            editing_user_id.set(None)
-        except PermissionError:
-            edit_modal_message.set(t("users_denied_edit"))
-        except sqlite3.IntegrityError:
-            edit_modal_message.set(t("users_exists"))
+        try:
+            form = {
+                "id": int(selected_id),
+                "username": validate_username(input.edit_username()),
+                "role": role,
+                "is_active": bool(input.edit_is_active()),
+                "password": validate_password(new_password, strict=False) if new_password else "",
+                "expire_date": str(expire_date) if expire_date else None,
+                "id_code": validate_id_code(input.edit_id_code()),
+                "email": validate_email(input.edit_email()),
+                "phone": validate_phone(input.edit_phone()),
+            }
         except ValueError as exc:
             edit_modal_message.set(str(exc))
+            return
 
-    @reactive.effect
-    @reactive.event(input.delete_user)
-    def _delete_user_event():
-        # Delete from inside the edit modal.
+        edit_modal_message.set("")
+        pending["edit"] = form
+        _run_save_user()
+
+    @confirm_with_password(
+        input, _ensure_valid_session,
+        message=lambda: t("users_confirm_update", username=pending.get("edit", {}).get("username", "")),
+        required_role="superadmin",
+    )
+    def _run_save_user():
+        form = pending.pop("edit", None)
+        if not form:
+            return
         current = _ensure_valid_session()
         if not current:
             return
-        selected_id = editing_user_id()
-        if selected_id is None:
-            return
         try:
-            with user_context(current):
-                delete_user(int(selected_id))
-            create_message.set(t("users_deleted"))
-            users_refresh.set(users_refresh() + 1)
-            editing_user_id.set(None)
-            ui.modal_remove()
+            update_user(
+                form["id"], form["username"], form["role"], form["is_active"],
+                form["password"], form["expire_date"],
+                id_code=form["id_code"], email=form["email"], phone=form["phone"],
+            )
         except PermissionError:
-            edit_modal_message.set(t("users_denied_delete"))
+            _toast(t("users_denied_edit"), "error")
+            return
+        except sqlite3.IntegrityError:
+            _reopen_edit_modal(form, t("users_exists"), current)
+            return
         except ValueError as exc:
-            edit_modal_message.set(str(exc))
+            _reopen_edit_modal(form, str(exc), current)
+            return
+
+        create_message.set(t("users_updated"))
+        _toast(t("users_updated"))
+        users_refresh.set(users_refresh() + 1)
+        editing_user_id.set(None)
+        if form["id"] == int(current["id"]):
+            # The signed-in account was edited: re-read it (disabled / expired /
+            # renamed accounts are signed out or refreshed right away).
+            _ensure_valid_session()
 
     @render.ui
     def users_table():
@@ -1026,11 +1179,21 @@ def server(input, output, session):
             ui.tags.th(t("users_col_actions")),
             ui.tags.th(t("users_col_id")),
             ui.tags.th(t("users_col_username")),
+            ui.tags.th(t("users_col_id_code")),
+            ui.tags.th(t("users_col_email")),
+            ui.tags.th(t("users_col_phone")),
             ui.tags.th(t("users_col_role")),
             ui.tags.th(t("users_col_active")),
             ui.tags.th(t("users_col_expires")),
             ui.tags.th(t("users_col_created")),
         )
+
+        def _cell(value, ltr=False):
+            # LTR cells keep e-mail / phone / codes readable inside an RTL page.
+            if not value:
+                return ui.tags.td(t("users_missing_info"), class_="text-muted")
+            return ui.tags.td(value, dir="ltr", class_="ltr-cell") if ltr else ui.tags.td(value)
+
         body = []
         for row in rows:
             actions = ui.tags.td(
@@ -1055,6 +1218,9 @@ def server(input, output, session):
                     actions,
                     ui.tags.td(str(row["id"])),
                     ui.tags.td(row["username"]),
+                    _cell(row.get("id_code"), ltr=True),
+                    _cell(row.get("email"), ltr=True),
+                    _cell(row.get("phone"), ltr=True),
                     ui.tags.td(role_label(row["role"])),
                     ui.tags.td(t("yes") if row["is_active"] else t("no")),
                     ui.tags.td(row["expire_date"] or t("never")),
@@ -1062,6 +1228,208 @@ def server(input, output, session):
                 )
             )
         return ui.tags.table(header, *body, class_="users-table")
+
+    # ---------------- accounts database: backup / restore ------------------
+    @render.ui
+    def backups_table():
+        backups_refresh()
+        current = _ensure_valid_session()
+        if not current or current["role"] != "superadmin":
+            return ui.div()
+        try:
+            with user_context(current):
+                items = list_backups()
+        except PermissionError:
+            return ui.div()
+        if not items:
+            return ui.p(t("backup_none"), class_="text-muted")
+
+        header = ui.tags.tr(
+            ui.tags.th(t("backup_col_actions")),
+            ui.tags.th(t("backup_col_name")),
+            ui.tags.th(t("backup_col_created")),
+            ui.tags.th(t("backup_col_size")),
+            ui.tags.th(t("backup_col_type")),
+        )
+
+        def action_button(action: str, label_key: str, style: str, name: str):
+            return ui.tags.button(
+                t(label_key), type="button", data_action=action, data_name=name,
+                class_=f"btn btn-sm {style} backup-action me-1",
+            )
+
+        body = []
+        for item in items:
+            name = item["name"]
+            body.append(
+                ui.tags.tr(
+                    ui.tags.td(
+                        action_button("restore", "backup_restore", "btn-warning", name),
+                        action_button("download", "backup_download", "btn-secondary", name),
+                        action_button("delete", "backup_delete", "btn-danger", name),
+                        class_="user-actions-cell",
+                    ),
+                    ui.tags.td(name, dir="ltr", class_="ltr-cell"),
+                    ui.tags.td(item["created"], dir="ltr", class_="ltr-cell"),
+                    ui.tags.td(backup.format_size(item["size"]), dir="ltr", class_="ltr-cell"),
+                    ui.tags.td(t(f"backup_type_{item['kind']}")),
+                )
+            )
+        return ui.tags.table(header, *body, class_="users-table")
+
+    @reactive.effect
+    @reactive.event(input.backup_create)
+    def _backup_create_event():
+        # Creating a copy changes nothing, so it needs no password (it is logged).
+        current = _ensure_valid_session()
+        if not current:
+            return
+        try:
+            with user_context(current):
+                info = create_backup()
+        except PermissionError:
+            _toast(t("backup_denied"), "error")
+            return
+        except (ValueError, OSError) as exc:
+            _toast(str(exc), "error")
+            return
+        backups_refresh.set(backups_refresh() + 1)
+        _toast(t("backup_created", name=info["name"]))
+
+    @reactive.effect
+    @reactive.event(input.backup_action)
+    def _backup_action_event():
+        # Restore / Download / Delete buttons of the backups table (static/js/custom.js).
+        # Every one of them goes through @confirm_with_password.
+        current = _ensure_valid_session()
+        if not current:
+            return
+        payload = input.backup_action()
+        if not isinstance(payload, dict):
+            return
+        action, name = payload.get("action"), payload.get("name")
+        runners = {
+            "restore": _run_restore_backup,
+            "download": _run_download_backup,
+            "delete": _run_delete_backup,
+        }
+        if action not in runners or not backup.is_valid_name(name):
+            return  # forged input
+        pending["backup"] = name
+        runners[action]()
+
+    @confirm_with_password(
+        input, _ensure_valid_session,
+        message=lambda: t("backup_confirm_restore", name=pending.get("backup", "")),
+        required_role="superadmin",
+    )
+    def _run_restore_backup():
+        name = pending.pop("backup", None)
+        try:
+            result = restore_backup(name)
+        except PermissionError:
+            _toast(t("backup_denied"), "error")
+            return
+        except (ValueError, OSError) as exc:
+            _toast(str(exc), "error")
+            return
+        users_refresh.set(users_refresh() + 1)
+        backups_refresh.set(backups_refresh() + 1)
+        editing_user_id.set(None)
+        _toast(
+            t("backup_restored", name=result["restored"]["name"],
+              users=result["users"], safety=result["safety"]["name"])
+        )
+        # The restored data may have removed / disabled the account in use.
+        _ensure_valid_session()
+
+    @confirm_with_password(
+        input, _ensure_valid_session,
+        message=lambda: t("backup_confirm_delete", name=pending.get("backup", "")),
+        required_role="superadmin",
+    )
+    def _run_delete_backup():
+        name = pending.pop("backup", None)
+        try:
+            delete_backup(name)
+        except PermissionError:
+            _toast(t("backup_denied"), "error")
+            return
+        except (ValueError, OSError) as exc:
+            _toast(str(exc), "error")
+            return
+        backups_refresh.set(backups_refresh() + 1)
+        _toast(t("backup_deleted"))
+
+    @confirm_with_password(
+        input, _ensure_valid_session,
+        message=lambda: t("backup_confirm_download", name=pending.get("backup", "")),
+        required_role="superadmin",
+    )
+    def _run_download_backup():
+        # The file only reaches the browser AFTER the password was confirmed:
+        # it is offered as a download link inside a dialog.
+        name = pending.pop("backup", None)
+        try:
+            data = read_backup(name)
+            if len(data) > 20 * 1024 * 1024:
+                raise ValueError(t("err_backup_too_large", n=20))
+        except PermissionError:
+            _toast(t("backup_denied"), "error")
+            return
+        except (ValueError, OSError) as exc:
+            _toast(str(exc), "error")
+            return
+        href = "data:application/octet-stream;base64," + base64.b64encode(data).decode("ascii")
+        ui.modal_show(
+            ui.modal(
+                ui.p(t("backup_download_text")),
+                ui.tags.a(name, href=href, download=name, class_="btn btn-primary"),
+                title=t("backup_download_title"),
+                easy_close=True,
+                footer=ui.modal_button(t("backup_close"), class_="btn btn-secondary"),
+            )
+        )
+
+    @reactive.effect
+    @reactive.event(input.backup_import)
+    def _backup_import_event():
+        # Step 1: take the chosen file. Step 2: _run_import_backup() asks for the password.
+        current = _ensure_valid_session()
+        if not current:
+            return
+        files = input.backup_upload()
+        if not files:
+            _toast(t("backup_no_file"), "error")
+            return
+        chosen = files[0]
+        if int(chosen.get("size") or 0) > backup.MAX_IMPORT_BYTES:
+            _toast(t("err_backup_too_large", n=backup.MAX_IMPORT_BYTES // (1024 * 1024)), "error")
+            return
+        try:
+            pending["upload"] = Path(chosen["datapath"]).read_bytes()
+        except (OSError, KeyError):
+            _toast(t("err_backup_invalid"), "error")
+            return
+        _run_import_backup()
+
+    @confirm_with_password(
+        input, _ensure_valid_session,
+        message=t("backup_confirm_import"),
+        required_role="superadmin",
+    )
+    def _run_import_backup():
+        data = pending.pop("upload", None)
+        try:
+            info = import_backup(data or b"")
+        except PermissionError:
+            _toast(t("backup_denied"), "error")
+            return
+        except (ValueError, OSError) as exc:
+            _toast(str(exc), "error")
+            return
+        backups_refresh.set(backups_refresh() + 1)
+        _toast(t("backup_imported", name=info["name"]))
 
 
 
