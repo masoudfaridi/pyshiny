@@ -2,6 +2,15 @@
 (function () {
   const THEME_KEY = "adminlte-shiny-theme";
 
+  // localStorage can be missing or throw (private mode, blocked site data).
+  // The page must keep working without it, so every access goes through these.
+  function storeGet(key) {
+    try { return window.localStorage.getItem(key); } catch (e) { return null; }
+  }
+  function storeSet(key, value) {
+    try { window.localStorage.setItem(key, value); } catch (e) { /* ignore */ }
+  }
+
   // Translated UI strings injected by app.py as window.APP_I18N (see i18n.py).
   // Every lookup falls back to the English text, so the script still works
   // when APP_I18N is missing.
@@ -38,7 +47,7 @@
     // modals, cards, dropdowns, close buttons ...). Switching it together with
     // our theme means widgets we did not style by hand still follow the theme.
     root.setAttribute("data-bs-theme", themes[name].mode === "Dark" ? "dark" : "light");
-    localStorage.setItem(THEME_KEY, name);
+    storeSet(THEME_KEY, name);
 
     document.querySelectorAll(".theme-option").forEach((el) => {
       el.classList.toggle("active", el.dataset.theme === name);
@@ -91,7 +100,7 @@
       if (!picker.contains(event.target)) menu.classList.remove("open");
     });
 
-    const saved = localStorage.getItem(THEME_KEY) || "light-blue";
+    const saved = storeGet(THEME_KEY) || "light-blue";
     applyTheme(saved);
   }
 
@@ -161,7 +170,7 @@
       btn.classList.toggle("is-collapsed", collapsed);
     }
     if (persist && !mobileQuery.matches) {
-      try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "closed" : "open"); } catch (e) { /* private mode */ }
+      storeSet(SIDEBAR_KEY, collapsed ? "closed" : "open");
     }
   }
 
@@ -170,8 +179,7 @@
     if (!btn || btn.dataset.ready === "true") return;
     btn.dataset.ready = "true";
 
-    let saved = null;
-    try { saved = localStorage.getItem(SIDEBAR_KEY); } catch (e) { /* ignore */ }
+    const saved = storeGet(SIDEBAR_KEY);
     setSidebarCollapsed(mobileQuery.matches ? true : saved === "closed", false);
 
     btn.addEventListener("click", () => {
@@ -190,8 +198,7 @@
       });
       // Rotating a tablet / resizing the window switches between the two modes.
       mobileQuery.addEventListener("change", (event) => {
-        let pref = null;
-        try { pref = localStorage.getItem(SIDEBAR_KEY); } catch (e) { /* ignore */ }
+        const pref = storeGet(SIDEBAR_KEY);
         setSidebarCollapsed(event.matches ? true : pref === "closed", false);
       });
     }
@@ -292,17 +299,17 @@
 
   function loadFontSettings() {
     try {
-      const raw = localStorage.getItem(FONT_KEY);
+      const raw = storeGet(FONT_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        return { ...defaultFonts(), ...parsed };
+        if (parsed && typeof parsed === "object") return { ...defaultFonts(), ...parsed };
       }
     } catch (e) {}
     return defaultFonts();
   }
 
   function saveFontSettings(settings) {
-    localStorage.setItem(FONT_KEY, JSON.stringify(settings));
+    storeSet(FONT_KEY, JSON.stringify(settings));
   }
 
   function applyFonts(settings) {
@@ -319,9 +326,12 @@
       opts.push({ id: "inherit", label: i18n("font_inherit", "Inherit (Body)") });
     }
     fonts.forEach((f) => opts.push(f));
-    selectEl.innerHTML = opts
-      .map((f) => `<option value="${f.id}">${f.label}</option>`)
-      .join("");
+    selectEl.replaceChildren(...opts.map((f) => {
+      const option = document.createElement("option");
+      option.value = f.id;
+      option.textContent = f.label;
+      return option;
+    }));
     const allowed = opts.map((f) => f.id);
     selectEl.value = allowed.includes(value) ? value : opts[0].id;
   }
@@ -390,12 +400,20 @@
     // Shiny replaces the login/dashboard DOM dynamically. Re-run the theme
     // picker and login Enter-key binder whenever the root UI changes.
     if (!window.__themeObserverInstalled) {
+      // Shiny updates outputs often (tables, clock text ...). Re-binding on every
+      // single DOM mutation wasted work, so it now runs at most once per frame.
+      let pending = false;
       const observer = new MutationObserver(() => {
-        buildThemePicker();
-        buildFontPicker();
-        setupSidebarToggle();
-        bindLoginEnterKey();
-        updateClock();
+        if (pending) return;
+        pending = true;
+        window.requestAnimationFrame(() => {
+          pending = false;
+          buildThemePicker();
+          buildFontPicker();
+          setupSidebarToggle();
+          bindLoginEnterKey();
+          updateClock();
+        });
       });
       observer.observe(document.body, { childList: true, subtree: true });
       window.__themeObserverInstalled = true;
@@ -481,11 +499,7 @@
 
   // Apply the saved theme immediately (also on the login page, which has no
   // theme picker) so the first paint already uses the right colours.
-  try {
-    applyTheme(localStorage.getItem(THEME_KEY) || "light-blue");
-  } catch (e) {
-    applyTheme("light-blue");
-  }
+  applyTheme(storeGet(THEME_KEY) || "light-blue");
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () { init(); startClock(); });

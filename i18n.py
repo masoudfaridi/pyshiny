@@ -75,9 +75,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "login_refresh": "Refresh",
         "login_button": "Sign in",
         "login_hint": (
-            "Default accounts are documented in README.md. "
-            "Change default passwords after first login."
+            "First run: the superadmin password is in db/initial_superadmin_password.txt "
+            "(see README.md). Change it after signing in."
         ),
+        "login_session_limit": (
+            "Too many failed attempts in this window. Reload the page to try again."
+        ),
+        "login_session_expired": "Your session has expired. Please sign in again.",
         "login_invalid": (
             "Invalid username or password, inactive account, or expired account."
         ),
@@ -325,9 +329,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "login_refresh": "تازه‌سازی",
         "login_button": "ورود",
         "login_hint": (
-            "حساب‌های پیش‌فرض در فایل README.md توضیح داده شده‌اند. "
-            "پس از اولین ورود، رمز عبور پیش‌فرض را تغییر دهید."
+            "اجرای اول: رمز سوپر ادمین در فایل db/initial_superadmin_password.txt است "
+            "(README.md را ببینید). پس از ورود آن را تغییر دهید."
         ),
+        "login_session_limit": (
+            "تعداد تلاش‌های ناموفق در این صفحه زیاد شد. برای تلاش دوباره صفحه را بارگذاری مجدد کنید."
+        ),
+        "login_session_expired": "زمان نشست شما به پایان رسید. لطفاً دوباره وارد شوید.",
         "login_invalid": (
             "نام کاربری یا رمز عبور نادرست است، یا حساب غیرفعال یا منقضی شده است."
         ),

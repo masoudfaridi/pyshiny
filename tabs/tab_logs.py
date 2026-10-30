@@ -52,6 +52,7 @@ from urllib.parse import quote
 
 from pathlib import Path
 
+from shiny.types import SilentException
 from shiny import module, reactive, render, ui
 
 from auth import (
@@ -691,7 +692,9 @@ def _events_panel():
                 class_="log-field",
             ),
             ui.div(
-                ui.input_text("username", _tx("username"), width="100%"),
+                # update_on="blur": filter when the field is left / Enter is
+                # pressed, not one database query set per keystroke.
+                ui.input_text("username", _tx("username"), width="100%", update_on="blur"),
                 class_="log-field",
             ),
             ui.div(
@@ -833,8 +836,19 @@ def _server(input, output, session, get_session_user):
             return None, "denied"
         return rows, None
 
+    # One cached query per category, shared by its table AND the CSV link
+    # (they used to query the database separately on every refresh).
+    def _events_calc(category: str):
+        @reactive.calc
+        def rows():
+            return _fetch(category)
+
+        return rows
+
+    events = {c: _events_calc(c) for c in ("auth", "navigation", "security")}
+
     def _table(category: str):
-        rows, error = _fetch(category)
+        rows, error = events[category]()
         if error:
             return ui.div(_tx(error), class_="login-error")
         if not rows:
@@ -1034,15 +1048,24 @@ def _server(input, output, session, get_session_user):
             return 0  # not reported (yet): UTC
 
     @reactive.calc
+    @reactive.event(input.a_apply, refresh, ignore_none=False)
     def analytics_data():
-        """``(report, error_key)`` for the current filters."""
-        refresh()
-        input.a_apply()
+        """``(report, error_key)`` for the current filters.
+
+        Recomputed when Apply (or Refresh) is pressed -- not on every filter
+        change: each run scans the whole log with about a dozen queries.
+        """
         try:
+            # The user list is a dynamic output that may not exist yet on the
+            # first run: treat "not there yet" as "all users".
+            try:
+                chosen_user = input.a_user() or None
+            except SilentException:
+                chosen_user = None
             categories = list(input.a_categories() or [])
             filters = {
                 "period": input.a_period() or "30d",
-                "username": input.a_user() or None,
+                "username": chosen_user,
                 "role": input.a_role() or None,
                 "severity": input.a_severity() or None,
                 "categories": categories,
@@ -1383,7 +1406,9 @@ def _server(input, output, session, get_session_user):
     @render.ui
     def download_link():
         category = input.cat() or "auth"
-        rows, error = _fetch(category)
+        if category not in events:
+            return ui.tags.span()
+        rows, error = events[category]()
         if error or not rows:
             return ui.tags.span()  # nothing to export (or not allowed): no link
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")

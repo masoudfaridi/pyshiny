@@ -37,7 +37,9 @@ Adding a new tab
 """
 
 import base64
+import hashlib
 import json
+import os
 import time
 from pathlib import Path
 
@@ -80,6 +82,7 @@ from auth import (
     verify_captcha,
 )
 
+from security import SecurityMiddleware
 from i18n import APP_LANG, DIRECTION, IS_RTL, js_bundle, role_label, t
 from tabs import tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_account, tab_users, tab_logs
 
@@ -94,6 +97,17 @@ DEFAULT_TAB_ID = "tab_04"  # guest-accessible default so lower roles land on a v
 
 _last_purge = 0.0  # time of the last automatic audit-log purge (interval: Logs tab settings)
 
+# A signed-in session ends after this many hours even if it stays connected
+# (a browser tab left open on a shared PC). 0 disables the limit.
+try:
+    SESSION_MAX_SECONDS = max(0.0, float(os.environ.get("SESSION_MAX_HOURS", "12"))) * 3600
+except ValueError:
+    SESSION_MAX_SECONDS = 12 * 3600
+# Failed sign-in attempts (wrong CAPTCHA or password) one browser session may
+# make; after that the page must be reloaded. Slows down scripted guessing
+# without letting anyone lock a victim's ACCOUNT by mistyping CAPTCHAs.
+SESSION_MAX_LOGIN_FAILURES = 10
+
 # A "group" is not a tab by itself -- it's just a collapsible header in the
 # sidebar for every tab whose NAV_GROUP matches its key.
 GROUPS = {
@@ -106,18 +120,29 @@ def read_asset(*parts: str) -> str:
     return (STATIC_DIR.joinpath(*parts)).read_text(encoding="utf-8")
 
 
-def _flat_link(tab) -> ui.Tag:
+def asset_url(*parts: str) -> str:
+    """URL of a static file with a content hash, e.g. ``css/styles.css?v=1a2b3c4d``.
+
+    The files are served as separate, cacheable requests (they used to be
+    inlined into every page load); the hash changes whenever the file does, so
+    browsers never keep a stale copy after an update.
+    """
+    digest = hashlib.sha256(STATIC_DIR.joinpath(*parts).read_bytes()).hexdigest()[:10]
+    return "/".join(parts) + "?v=" + digest
+
+
+def _flat_link(tab, active_id: str = DEFAULT_TAB_ID) -> ui.Tag:
     """A single, top-level sidebar link (no children)."""
     return ui.tags.a(
         ui.tags.i(class_=f"bi {tab.NAV_ICON} nav-icon"),
         ui.tags.span(tab.NAV_LABEL),
         href="javascript:void(0)",
-        class_="sidebar-link" + (" active" if tab.NAV_ID == DEFAULT_TAB_ID else ""),
+        class_="sidebar-link" + (" active" if tab.NAV_ID == active_id else ""),
         data_nav_id=tab.NAV_ID,
     )
 
 
-def _group_block(group_key: str, children: list) -> ui.Tag:
+def _group_block(group_key: str, children: list, active_id: str = DEFAULT_TAB_ID) -> ui.Tag:
     """A collapsible group header (e.g. "Dashboard") plus its sub-links."""
     group = GROUPS[group_key]
     submenu_id = f"submenu-{group_key}"
@@ -141,7 +166,7 @@ def _group_block(group_key: str, children: list) -> ui.Tag:
                 child.NAV_LABEL,
                 href="javascript:void(0)",
                 class_="sidebar-link sub-link"
-                + (" active" if child.NAV_ID == DEFAULT_TAB_ID else ""),
+                + (" active" if child.NAV_ID == active_id else ""),
                 data_nav_id=child.NAV_ID,
             )
             for child in children
@@ -153,23 +178,34 @@ def _group_block(group_key: str, children: list) -> ui.Tag:
     return ui.tags.div(toggle, sub_links, class_="nav-group")
 
 
-def build_sidebar(role: str = "guest") -> ui.Tag:
+def _tab_allowed(role: str, tab) -> bool:
+    """True when ``role`` may see ``tab`` (unknown roles count as level 0)."""
+    return ROLE_LEVELS.get(role, 0) >= ROLE_LEVELS.get(getattr(tab, "NAV_MIN_ROLE", "guest"), 0)
+
+
+def resolve_tab(role: str, requested: str | None):
+    """The tab to show: the requested one if this role may see it, else the
+    default tab, else the first tab the role may see."""
+    tab = TAB_LOOKUP.get(requested or DEFAULT_TAB_ID) or TAB_LOOKUP[DEFAULT_TAB_ID]
+    if _tab_allowed(role, tab):
+        return tab
+    if _tab_allowed(role, TAB_LOOKUP[DEFAULT_TAB_ID]):
+        return TAB_LOOKUP[DEFAULT_TAB_ID]
+    return next((candidate for candidate in TABS if _tab_allowed(role, candidate)), TABS[0])
+
+
+def build_sidebar(role: str = "guest", active_id: str = DEFAULT_TAB_ID) -> ui.Tag:
     """Walks TABS in order and hides links above the current user role."""
     nodes = []
     rendered_groups = set()
 
-    role_levels = {"guest": 0, "user": 1, "admin": 2, "superadmin": 3}
-
-    def allowed(tab):
-        return role_levels.get(role, 0) >= role_levels.get(getattr(tab, "NAV_MIN_ROLE", "guest"), 0)
-
-    visible_tabs = [t for t in TABS if allowed(t)]
+    visible_tabs = [t for t in TABS if _tab_allowed(role, t)]
 
     for tab in visible_tabs:
         group_key = getattr(tab, "NAV_GROUP", None)
 
         if group_key is None:
-            nodes.append(_flat_link(tab))
+            nodes.append(_flat_link(tab, active_id))
             continue
 
         if group_key in rendered_groups:
@@ -177,7 +213,7 @@ def build_sidebar(role: str = "guest") -> ui.Tag:
         rendered_groups.add(group_key)
 
         children = [t for t in visible_tabs if getattr(t, "NAV_GROUP", None) == group_key]
-        nodes.append(_group_block(group_key, children))
+        nodes.append(_group_block(group_key, children, active_id))
 
     return ui.tags.nav(*nodes, class_="sidebar-nav")
 
@@ -216,7 +252,7 @@ def login_ui() -> ui.Tag:
     )
 
 
-def dashboard_ui(role: str) -> ui.Tag:
+def dashboard_ui(role: str, active_id: str = DEFAULT_TAB_ID) -> ui.Tag:
     return ui.div(
         ui.tags.header(
             ui.tags.div(
@@ -325,7 +361,7 @@ def dashboard_ui(role: str) -> ui.Tag:
         # we control collapsing ourselves (see setupSidebarToggle in custom.js),
         # so the menu can never get stuck hidden, and the content fills the page.
         ui.div(
-            ui.tags.aside(build_sidebar(role), id="app-sidebar", class_="app-sidebar"),
+            ui.tags.aside(build_sidebar(role, active_id), id="app-sidebar", class_="app-sidebar"),
             ui.div(id="sidebar-backdrop", class_="app-sidebar-backdrop"),
             ui.tags.main(ui.output_ui("active_panel"), class_="app-main"),
             class_="app-body",
@@ -365,9 +401,10 @@ app_ui = ui.page_fillable(
         rel="stylesheet",
         href="css/bootstrap.rtl.css" if IS_RTL else "css/bootstrap.css",
     ),
+    ui.tags.link(rel="stylesheet", href="vendor/bootstrap-icons/bootstrap-icons.min.css"),
     ui.tags.link(rel="stylesheet", href="css/fonts.css"),
-    ui.tags.style(read_asset("css", "styles.css")),
-    ui.tags.script(read_asset("js", "custom.js")),
+    ui.tags.link(rel="stylesheet", href=asset_url("css", "styles.css")),
+    ui.tags.script(src=asset_url("js", "custom.js")),
     ui.tags.script(
         f"document.documentElement.setAttribute('dir','{DIRECTION}');"
         f"document.documentElement.setAttribute('lang','{APP_LANG}');"
@@ -397,6 +434,9 @@ def server(input, output, session):
     captcha_expires = reactive.Value(None)
     captcha_image = reactive.Value("")
     captcha_nonce = reactive.Value(0)
+    # (id, username, role) of the signed-in account, or None. The page shell is
+    # rebuilt ONLY when this changes -- not when e-mail / phone are edited.
+    shell_key = reactive.Value(None)
 
     # --- audit log helpers (see auth/audit.py) -------------------------------
     global _last_purge
@@ -405,7 +445,7 @@ def server(input, output, session):
         audit.purge_old()
 
     meta = audit.session_meta(session)  # {"sid", "ip", "ua"}
-    state = {"login_at": None, "last_tab": None}  # per-session, not reactive
+    state = {"login_at": None, "last_tab": None, "login_failures": 0}  # per-session, not reactive
 
     def _log(category, event, user=None, *, username=None, severity="info", detail=None):
         audit.log_event(
@@ -433,10 +473,16 @@ def server(input, output, session):
             return "account_deleted"
         if not row.get("is_active"):
             return "account_disabled"
+        if row.get("session_version") != user.get("session_version", row.get("session_version")):
+            return "password_changed"
         return "account_expired"
 
     def _note_login_failure(username, reason):
-        just_locked = register_login_failure(username)
+        state["login_failures"] += 1
+        # A wrong CAPTCHA proves nothing about the password, so it must not count
+        # towards the ACCOUNT lockout (otherwise anyone could lock any account,
+        # superadmin included, just by submitting junk). It only counts per session.
+        just_locked = register_login_failure(username) if reason != "captcha" else False
         _log(
             "auth", "login_failed", username=username,
             severity="warning", detail={"reason": reason},
@@ -463,13 +509,8 @@ def server(input, output, session):
     # Register content-tab modules once (namespaces tab_01-..., tab_02-..., ...).
     # This is the Python equivalent of calling moduleServer() for each tab in R.
     # Must NOT run inside login or active_panel.
-    tab_01.server()
-    tab_02.server()
-    tab_03.server()
-    tab_04.server()
-    tab_05.server()
-    tab_06.server()
-
+    # Content-tab servers are registered further down, after
+    # _ensure_valid_session exists: they re-check the role on every render.
 
     def _issue_captcha():
         # Generate a fresh offline image CAPTCHA and store only its hash in session state.
@@ -510,6 +551,50 @@ def server(input, output, session):
     # registered after _ensure_valid_session is defined, and only once.
     tab_07.server(_ensure_valid_session)
     tab_logs.server(_ensure_valid_session)
+    # Server-side role gate for every content tab (a hidden sidebar link is not
+    # access control: a crafted page could still bind tab_01-hist, for example).
+    for content_tab in (tab_01, tab_02, tab_03, tab_04, tab_05, tab_06):
+        content_tab.server(_ensure_valid_session)
+
+    def _sign_out(event: str | None = None, severity: str = "info", **detail) -> None:
+        """Forget the signed-in user of this browser session (optionally logged)."""
+        with reactive.isolate():
+            person = logged_in_user()
+        if person and event:
+            _log("auth", event, person, severity=severity,
+                 detail={"duration_s": _session_seconds(), **detail})
+        state["login_at"] = None
+        state["last_tab"] = None
+        logged_in_user.set(None)
+        pending.clear()
+
+    def _reissue_session() -> None:
+        """Re-read the signed-in account after it changed its OWN password (or a
+        restore): this session stays valid, every other session of it is closed."""
+        with reactive.isolate():
+            person = logged_in_user()
+        fresh = refresh_session_user({"id": person["id"]}) if person else None
+        if fresh is not None:
+            logged_in_user.set(fresh)
+
+    @reactive.effect
+    def _sync_shell_key():
+        user = _ensure_valid_session()
+        key = (user["id"], user["username"], user["role"]) if user else None
+        with reactive.isolate():
+            if shell_key() != key:
+                shell_key.set(key)
+
+    @reactive.effect
+    def _session_lifetime():
+        # Ends a signed-in session after SESSION_MAX_HOURS, even if left open.
+        reactive.invalidate_later(60)
+        started = state["login_at"]
+        if not SESSION_MAX_SECONDS or started is None:
+            return
+        if time.monotonic() - started > SESSION_MAX_SECONDS:
+            _sign_out("session_expired", reason="max_lifetime")
+            login_error.set(t("login_session_expired"))
 
     @reactive.effect
     def _ensure_captcha_ready():
@@ -519,11 +604,19 @@ def server(input, output, session):
 
     @render.ui
     def root_ui():
-        user = _ensure_valid_session()
+        if shell_key() is None:
+            return login_ui()
+        with reactive.isolate():
+            user = logged_in_user()
+            try:
+                requested = input.sidebar_nav()
+            except Exception:
+                requested = None
         if not user:
             return login_ui()
+        active = resolve_tab(user["role"], requested).NAV_ID
         with user_context(user):
-            return dashboard_ui(user["role"])
+            return dashboard_ui(user["role"], active)
 
     @render.ui
     def login_captcha_ui():
@@ -564,6 +657,12 @@ def server(input, output, session):
             _issue_captcha()
             return
 
+        if state["login_failures"] >= SESSION_MAX_LOGIN_FAILURES:
+            _log("security", "login_blocked_session", username=username, severity="warning",
+                 detail={"failures": state["login_failures"]})
+            login_error.set(t("login_session_limit"))
+            return
+
         locked, remaining = is_login_locked(username)
         if locked:
             _log("security", "login_blocked_locked", username=username,
@@ -593,9 +692,12 @@ def server(input, output, session):
         login_error.set("")
         state["login_at"] = time.monotonic()
         state["last_tab"] = None
+        state["login_failures"] = 0
         _log("auth", "login_success", user)
         logged_in_user.set(user)
-        _issue_captcha()
+        # A fresh CAPTCHA is drawn when the login page is shown again (logout),
+        # not now: no image work for a page nobody sees.
+        captcha_image.set("")
 
     @render.ui
     def login_message():
@@ -613,12 +715,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.logout_button)
     def _logout():
-        person = logged_in_user()
-        if person:
-            _log("auth", "logout", person, detail={"duration_s": _session_seconds()})
-        state["login_at"] = None
-        state["last_tab"] = None
-        logged_in_user.set(None)
+        _sign_out("logout")
         login_error.set("")
         create_message.set("")
         account_message.set("")
@@ -638,16 +735,8 @@ def server(input, output, session):
         except Exception:
             pass
 
-        role_levels = {"guest": 0, "user": 1, "admin": 2, "superadmin": 3}
-        tab = TAB_LOOKUP.get(selected, TAB_LOOKUP.get(DEFAULT_TAB_ID, TABS[0]))
-        required = getattr(tab, "NAV_MIN_ROLE", "guest")
-        if role_levels[user["role"]] < role_levels.get(required, 0):
-            # Fall back to the first tab this role is allowed to see.
-            for candidate in TABS:
-                min_role = getattr(candidate, "NAV_MIN_ROLE", "guest")
-                if role_levels[user["role"]] >= role_levels.get(min_role, 0):
-                    tab = candidate
-                    break
+        # Not allowed / unknown -> default tab or the first one this role may see.
+        tab = resolve_tab(user["role"], selected)
         with user_context(user):
             return tab.panel()
 
@@ -720,6 +809,11 @@ def server(input, output, session):
             account_message.set(t("account_changed"))
         except (PermissionError, ValueError) as exc:
             account_message.set(str(exc))
+            return
+        # The password change closed every OTHER session of this account; keep this one.
+        _reissue_session()
+        for field in ("current_password", "new_own_password", "new_own_password_confirm"):
+            ui.update_text(field, value="")
 
     def _toast(message: str, kind: str = "message") -> None:
         ui.notification_show(message, type=kind, duration=6)
@@ -1157,7 +1251,10 @@ def server(input, output, session):
         editing_user_id.set(None)
         if form["id"] == int(current["id"]):
             # The signed-in account was edited: re-read it (disabled / expired /
-            # renamed accounts are signed out or refreshed right away).
+            # renamed accounts are signed out or refreshed right away). A new
+            # password set for one's OWN account keeps this session signed in.
+            if form["password"]:
+                _reissue_session()
             _ensure_valid_session()
 
     @render.ui
@@ -1341,6 +1438,7 @@ def server(input, output, session):
               users=result["users"], safety=result["safety"]["name"])
         )
         # The restored data may have removed / disabled the account in use.
+        _reissue_session()
         _ensure_valid_session()
 
     @confirm_with_password(
@@ -1434,4 +1532,5 @@ def server(input, output, session):
 
 
 
-app = App(app_ui, server, static_assets=STATIC_DIR)
+shiny_app = App(app_ui, server, static_assets=STATIC_DIR)
+app = SecurityMiddleware(shiny_app, max_upload_bytes=backup.MAX_IMPORT_BYTES + 1024 * 1024)

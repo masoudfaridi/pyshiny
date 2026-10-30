@@ -37,6 +37,11 @@ docker run -d \
     --name "${CONTAINER_NAME}" \
     -e "PORT=${PORT}" \
     -e "APP_LANG=${APP_LANG:-en}" \
+    -e "INITIAL_SUPERADMIN_PASSWORD=${INITIAL_SUPERADMIN_PASSWORD:-}" \
+    -e "DEMO_ACCOUNTS=${DEMO_ACCOUNTS:-0}" \
+    -e "SESSION_MAX_HOURS=${SESSION_MAX_HOURS:-12}" \
+    --security-opt no-new-privileges:true \
+    --cap-drop ALL \
     -p "${PORT}:${PORT}" \
     -v "${PROJECT_ROOT}/db:/app/db" \
     --restart unless-stopped \

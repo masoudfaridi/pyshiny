@@ -1,6 +1,7 @@
 /* AdminLTE-inspired dashboard styling with 12 selectable themes. */
 
-@import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css");
+/* Bootstrap Icons are served locally: static/vendor/bootstrap-icons (linked in app.py).
+   No CDN request -> faster first paint and works on offline / filtered networks. */
 
 :root {
   --card-bg: #ffffff;

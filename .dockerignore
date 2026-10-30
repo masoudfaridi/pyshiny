@@ -16,3 +16,14 @@ venv/
 db/
 
 *.zip
+
+# Not needed at runtime: keeps the image small.
+tests/
+docs/
+tutorial/
+00_create_files/
+01_requirements/
+requirements-dev.txt
+pytest.ini
+*.md
+!README.md

@@ -27,6 +27,13 @@ services:
     environment:
       PORT: "${PORT:-8000}"
       APP_LANG: "${APP_LANG:-en}"   # "en" (LTR) or "fa" (RTL) -- see i18n.py
+      # First run only (empty database): superadmin password. Leave empty to get
+      # a random one (printed in `docker logs`, saved to db/initial_superadmin_password.txt).
+      INITIAL_SUPERADMIN_PASSWORD: "${INITIAL_SUPERADMIN_PASSWORD:-}"
+      DEMO_ACCOUNTS: "${DEMO_ACCOUNTS:-0}"         # 1 = also create admin/user/guest demo accounts
+      SESSION_MAX_HOURS: "${SESSION_MAX_HOURS:-12}"
+      TRUST_PROXY_HEADERS: "${TRUST_PROXY_HEADERS:-0}"  # 1 only behind your own reverse proxy
+      HSTS: "${HSTS:-0}"                            # 1 only when served over HTTPS
     ports:
       - "${PORT:-8000}:${PORT:-8000}"
     volumes:
@@ -35,3 +42,7 @@ services:
       # automatically the first time the container starts.
       - ../db:/app/db
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

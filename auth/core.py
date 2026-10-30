@@ -5,7 +5,9 @@ import hashlib
 import hmac
 import os
 import re
+import secrets
 import sqlite3
+import sys
 import threading
 import time
 from contextlib import contextmanager
@@ -53,6 +55,38 @@ LOGIN_MAX_FAILURES = 5
 LOGIN_LOCKOUT_SECONDS = 300
 _login_failures: dict[str, list[float]] = {}
 _login_lock = threading.Lock()
+# Bounds on the in-memory lockout table, so a flood of random usernames cannot
+# grow it without limit (memory DoS). Keys are capped in length too.
+_LOCKOUT_KEY_MAX = 64
+_LOCKOUT_TABLE_SOFT_MAX = 5000
+
+# First-run seeding (only when the ``users`` table is EMPTY -- deleted accounts
+# are never re-created on restart). See ``init_db``.
+#   INITIAL_SUPERADMIN_PASSWORD  password of the first superadmin (optional)
+#   DEMO_ACCOUNTS=1              also create admin / user / guest demo accounts
+#                                with the documented demo passwords
+DEMO_PASSWORDS = {
+    "superadmin": "ChangeMe123!",
+    "admin": "Admin123!",
+    "user": "User123!",
+    "guest": "Guest123!",
+}
+INITIAL_PASSWORD_FILENAME = "initial_superadmin_password.txt"
+
+
+@contextmanager
+def _db():
+    """Open the accounts database; commit on success, roll back on error, ALWAYS close.
+
+    (``with sqlite3.connect(...)`` alone only commits -- it never closes the
+    connection, which leaks file handles under load.)
+    """
+    con = sqlite3.connect(DB_PATH, timeout=10)
+    try:
+        with con:
+            yield con
+    finally:
+        con.close()
 
 # Store the authenticated user for the current Shiny server execution context.
 _current_user: ContextVar[dict | None] = ContextVar("current_user", default=None)
@@ -226,6 +260,8 @@ def _session_dict(row: sqlite3.Row | dict) -> dict:
         "id_code": row["id_code"] if "id_code" in keys else None,
         "email": row["email"] if "email" in keys else None,
         "phone": row["phone"] if "phone" in keys else None,
+        # Bumped on every password change / reset: older sessions become invalid.
+        "session_version": int(row["session_version"] or 0) if "session_version" in keys else 0,
     }
 
 
@@ -308,7 +344,8 @@ def _migrate_schema(con: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             id_code TEXT NULL,
             email TEXT NULL,
-            phone TEXT NULL
+            phone TEXT NULL,
+            session_version INTEGER NOT NULL DEFAULT 0
         )
         """
     )
@@ -317,6 +354,10 @@ def _migrate_schema(con: sqlite3.Connection) -> None:
     for column in ("expire_date", "id_code", "email", "phone"):
         if column not in columns:
             con.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT NULL")
+    if "session_version" not in columns:
+        con.execute(
+            "ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0"
+        )
 
     # NULL codes (accounts created before this field existed) may repeat;
     # every real code must be unique.
@@ -328,35 +369,102 @@ def _migrate_schema(con: sqlite3.Connection) -> None:
     con.commit()
 
 
-def init_db() -> None:
-    """Create the authentication schema and migrate older database files."""
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _initial_password_file() -> Path:
+    return DB_PATH.parent / INITIAL_PASSWORD_FILENAME
+
+
+def _forget_initial_password() -> None:
+    """Remove the generated first-run password file once it is no longer valid."""
+    try:
+        _initial_password_file().unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _write_initial_password(password: str) -> Path:
+    """Store a generated first-run password in a file only the owner can read."""
+    path = _initial_password_file()
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(
+            "First-run password of the account 'superadmin'.\n"
+            "Sign in, change it (Account page), then this file is deleted automatically.\n\n"
+            f"{password}\n"
+        )
+    return path
+
+
+def _seed_accounts(con: sqlite3.Connection, demo: bool) -> None:
+    """Create the first accounts -- ONLY when the users table is empty.
+
+    Earlier versions re-inserted the four default accounts with their public
+    passwords on EVERY start, so an account the superadmin had deleted came
+    back on the next restart. Now:
+
+    * ``superadmin`` gets ``INITIAL_SUPERADMIN_PASSWORD`` when set; otherwise
+      the documented demo password (``DEMO_ACCOUNTS=1``) or a random one that
+      is printed to the console and saved to ``db/initial_superadmin_password.txt``
+      (mode 600).
+    * ``admin`` / ``user`` / ``guest`` demo accounts only with ``DEMO_ACCOUNTS=1``.
+    """
+    if con.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
+        return
+
+    password = os.environ.get("INITIAL_SUPERADMIN_PASSWORD") or ""
+    generated = False
+    if password:
+        validate_password(password, strict=False)
+    elif demo:
+        password = DEMO_PASSWORDS["superadmin"]
+    else:
+        password = secrets.token_urlsafe(12)
+        generated = True
+
+    accounts = [("superadmin", password, "superadmin")]
+    if demo:
+        accounts += [(name, DEMO_PASSWORDS[name], name) for name in ("admin", "user", "guest")]
+    for username, pwd, role in accounts:
+        con.execute(
+            "INSERT INTO users (username,password_hash,role) VALUES(?,?,?)",
+            (username, _hash_password(pwd), role),
+        )
+
+    if generated:
+        path = _write_initial_password(password)
+        print(
+            "\n[pyshiny] First run: created account 'superadmin' with a random password.\n"
+            f"[pyshiny] The password was saved to: {path}\n"
+            "[pyshiny] Sign in and change it; the file is removed automatically.\n",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
+def init_db(demo: bool | None = None) -> None:
+    """Create / migrate the schema and seed the first accounts into an EMPTY database.
+
+    ``demo`` defaults to the environment variable ``DEMO_ACCOUNTS``.
+    """
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if demo is None:
+        demo = _env_flag("DEMO_ACCOUNTS")
 
-    with sqlite3.connect(DB_PATH) as con:
+    with _db() as con:
         _migrate_schema(con)
-
-        defaults = [
-            ("superadmin", "ChangeMe123!", "superadmin", None),
-            ("admin", "Admin123!", "admin", None),
-            ("user", "User123!", "user", None),
-            ("guest", "Guest123!", "guest", None),
-        ]
-        for username, password, role, expire_date in defaults:
-            con.execute(
-                "INSERT OR IGNORE INTO users "
-                "(username,password_hash,role,expire_date) VALUES(?,?,?,?)",
-                (username, _hash_password(password), role, expire_date),
-            )
-        con.commit()
+        _seed_accounts(con, demo)
 
 
 def get_user_by_id(user_id: int) -> dict | None:
     """Load a user row by id. Returns None when missing."""
-    with sqlite3.connect(DB_PATH) as con:
+    with _db() as con:
         con.row_factory = sqlite3.Row
         row = con.execute(
-            "SELECT id, username, role, is_active, expire_date, id_code, email, phone "
-            "FROM users WHERE id=?",
+            "SELECT id, username, role, is_active, expire_date, id_code, email, phone, "
+            "session_version FROM users WHERE id=?",
             (int(user_id),),
         ).fetchone()
         return _session_dict(row) if row else None
@@ -378,18 +486,39 @@ def refresh_session_user(session_user: dict | None) -> dict | None:
         return None
     if fresh["role"] != "superadmin" and _is_expired(fresh.get("expire_date")):
         return None
+    # Password changed / reset since this session signed in: sign it out.
+    if (
+        "session_version" in session_user
+        and int(session_user["session_version"] or 0) != fresh["session_version"]
+    ):
+        return None
     return fresh
+
+
+def _lockout_key(username: str) -> str:
+    return (username or "").strip().lower()[:_LOCKOUT_KEY_MAX]
+
+
+def _prune_failures(now: float) -> None:
+    """Drop expired entries (caller holds ``_login_lock``)."""
+    if len(_login_failures) <= _LOCKOUT_TABLE_SOFT_MAX:
+        return
+    for key in [k for k, v in _login_failures.items() if not v or now - max(v) >= LOGIN_LOCKOUT_SECONDS]:
+        del _login_failures[key]
 
 
 def is_login_locked(username: str) -> tuple[bool, int]:
     """Return (locked?, seconds_remaining) for a username."""
-    key = (username or "").strip().lower()
+    key = _lockout_key(username)
     if not key:
         return False, 0
     now = time.time()
     with _login_lock:
         stamps = [t for t in _login_failures.get(key, []) if now - t < LOGIN_LOCKOUT_SECONDS]
-        _login_failures[key] = stamps
+        if stamps:
+            _login_failures[key] = stamps
+        else:
+            _login_failures.pop(key, None)  # never store empty entries
         if len(stamps) < LOGIN_MAX_FAILURES:
             return False, 0
         oldest = min(stamps)
@@ -403,21 +532,23 @@ def register_login_failure(username: str) -> bool:
     Returns True only when this failure is the one that locks the account
     (so the caller can log the lockout once, not on every later attempt).
     """
-    key = (username or "").strip().lower()
+    key = _lockout_key(username)
     if not key:
         return False
+    now = time.time()
     with _login_lock:
+        _prune_failures(now)
         stamps = _login_failures.setdefault(key, [])
-        stamps.append(time.time())
+        stamps.append(now)
         # Keep the window bounded.
-        cutoff = time.time() - LOGIN_LOCKOUT_SECONDS
+        cutoff = now - LOGIN_LOCKOUT_SECONDS
         _login_failures[key] = [t for t in stamps if t >= cutoff]
         return len(_login_failures[key]) == LOGIN_MAX_FAILURES
 
 
 def clear_login_failures(username: str) -> None:
     """Clear failure history after a successful login."""
-    key = (username or "").strip().lower()
+    key = _lockout_key(username)
     with _login_lock:
         _login_failures.pop(key, None)
 
@@ -430,12 +561,16 @@ def authenticate(username: str, password: str) -> dict | None:
     """
     username = (username or "").strip()
     password = password or ""
+    if len(username) > 64 or len(password) > PASSWORD_MAX_LEN:
+        # No stored account can match; skip the database, keep the timing.
+        _verify_password("", _DUMMY_PASSWORD_HASH)
+        return None
 
-    with sqlite3.connect(DB_PATH) as con:
+    with _db() as con:
         con.row_factory = sqlite3.Row
         row = con.execute(
             "SELECT id, username, password_hash, role, is_active, expire_date, "
-            "id_code, email, phone FROM users WHERE username=?",
+            "id_code, email, phone, session_version FROM users WHERE username=?",
             (username,),
         ).fetchone()
 
@@ -462,7 +597,7 @@ def verify_own_password(password: str) -> bool:
     password through it. Failed attempts are rate limited by the caller.
     """
     current = current_user()
-    with sqlite3.connect(DB_PATH) as con:
+    with _db() as con:
         row = con.execute(
             "SELECT password_hash FROM users WHERE id=? AND is_active=1",
             (current["id"],),
@@ -481,12 +616,19 @@ def change_own_password(current_password: str, new_password: str) -> None:
         new_password, strict=True, field_name=t("field_new_password")
     )
 
-    with sqlite3.connect(DB_PATH) as con:
+    # The current-password check shares the login lockout, so a hijacked
+    # session cannot brute-force the password through this form.
+    locked, remaining = is_login_locked(current["username"])
+    if locked:
+        raise ValueError(t("login_locked", remaining=remaining))
+
+    with _db() as con:
         row = con.execute(
             "SELECT password_hash FROM users WHERE id=? AND is_active=1",
             (current["id"],),
         ).fetchone()
-        if row is None or not _verify_password(current_password, row[0]):
+        if row is None or not _verify_password(current_password or "", row[0]):
+            register_login_failure(current["username"])
             audit.log_event(
                 "auth", "password_change_failed", user=current, severity="warning",
                 detail={"reason": "wrong_current_password"},
@@ -494,10 +636,12 @@ def change_own_password(current_password: str, new_password: str) -> None:
             raise ValueError(t("err_current_password"))
 
         con.execute(
-            "UPDATE users SET password_hash=? WHERE id=?",
+            "UPDATE users SET password_hash=?, session_version=session_version+1 WHERE id=?",
             (_hash_password(new_password), current["id"]),
         )
-        con.commit()
+    clear_login_failures(current["username"])
+    if current.get("role") == "superadmin":
+        _forget_initial_password()
     audit.log_event("auth", "password_changed", user=current)
 
 
@@ -514,7 +658,7 @@ def update_own_profile(email: str, phone: str) -> None:
     email = validate_email(email)
     phone = validate_phone(phone)
 
-    with sqlite3.connect(DB_PATH) as con:
+    with _db() as con:
         cursor = con.execute(
             "UPDATE users SET email=?, phone=? WHERE id=? AND is_active=1",
             (email, phone, current["id"]),
@@ -553,7 +697,7 @@ def create_user(
     email = validate_email(email)
     phone = validate_phone(phone)
 
-    with sqlite3.connect(DB_PATH) as con:
+    with _db() as con:
         try:
             con.execute(
                 "INSERT INTO users(username,password_hash,role,expire_date,id_code,email,phone) "
@@ -580,7 +724,7 @@ def create_user(
 @superadmin
 def list_users() -> list[dict]:
     """Return all users. Only Superadmin users may call this function."""
-    with sqlite3.connect(DB_PATH) as con:
+    with _db() as con:
         con.row_factory = sqlite3.Row
         rows = con.execute(
             "SELECT id, username, role, is_active, expire_date, created_at, "
@@ -622,7 +766,7 @@ def update_user(
     if phone is not None:
         phone = validate_phone(phone)
 
-    with sqlite3.connect(DB_PATH) as con:
+    with _db() as con:
         current = con.execute(
             "SELECT role, is_active, username, expire_date, id_code, email, phone "
             "FROM users WHERE id=?",
@@ -656,6 +800,9 @@ def update_user(
         if new_password:
             fields["password_hash"] = _hash_password(new_password)
         assignments = ", ".join(f"{column}=?" for column in fields)
+        if new_password:
+            # A reset password signs out every open session of that account.
+            assignments += ", session_version=session_version+1"
         try:
             con.execute(
                 f"UPDATE users SET {assignments} WHERE id=?",
@@ -681,6 +828,8 @@ def update_user(
             changes[field] = "changed"
     if new_password:
         changes["password_reset"] = True
+        if "superadmin" in (current[0], role):
+            _forget_initial_password()
     if changes:
         role_changed = "role" in changes
         touches_superadmin = "superadmin" in (current[0], role)
@@ -705,7 +854,7 @@ def delete_user(user_id: int) -> None:
     if current and int(current["id"]) == int(user_id):
         raise ValueError(t("err_delete_self"))
 
-    with sqlite3.connect(DB_PATH) as con:
+    with _db() as con:
         row = con.execute(
             "SELECT role, is_active, username FROM users WHERE id=?", (user_id,)
         ).fetchone()

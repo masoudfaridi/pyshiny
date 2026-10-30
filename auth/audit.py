@@ -40,6 +40,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -128,12 +129,28 @@ CREATE TABLE IF NOT EXISTS audit_settings (
 """
 
 
+# Paths whose schema / WAL mode were already set up by this process. Every log
+# event used to re-run the whole CREATE script (an extra write transaction per
+# event); now it runs once per file (again if the file disappears).
+_ready_paths: set[str] = set()
+_ready_lock = threading.Lock()
+
+
 def _connect() -> sqlite3.Connection:
-    AUDIT_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(AUDIT_DB_PATH, timeout=5)
+    path = AUDIT_DB_PATH
+    key = str(path)
+    first = key not in _ready_paths or not path.exists()
+    if first:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(path, timeout=5)
     con.row_factory = sqlite3.Row
-    con.execute("PRAGMA journal_mode=WAL")
-    con.executescript(_SCHEMA)
+    # WAL + NORMAL: durable against corruption, no fsync on every log row.
+    con.execute("PRAGMA synchronous=NORMAL")
+    if first:
+        with _ready_lock:
+            con.execute("PRAGMA journal_mode=WAL")
+            con.executescript(_SCHEMA)
+            _ready_paths.add(key)
     return con
 
 
@@ -168,13 +185,15 @@ def client_ip(http_conn) -> str | None:
     """Best-effort client IP from a Starlette connection.
 
     ``X-Forwarded-For`` is spoofable unless a trusted reverse proxy sets it,
-    so it is only honoured when the env var ``TRUST_PROXY_HEADERS=1``.
+    so it is only honoured when the env var ``TRUST_PROXY_HEADERS=1``. Then the
+    RIGHT-most entry is used: it is the one your own proxy appended; entries to
+    its left come from the client and can be forged.
     """
     try:
         if os.environ.get("TRUST_PROXY_HEADERS", "").strip() == "1":
             forwarded = http_conn.headers.get("x-forwarded-for")
             if forwarded:
-                return _clean(forwarded.split(",")[0], 64)
+                return _clean(forwarded.split(",")[-1], 64)
         client = http_conn.client
         return _clean(client.host, 64) if client else None
     except Exception:

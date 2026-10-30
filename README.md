@@ -577,10 +577,20 @@ Expired accounts cannot log in, and protected backend functions also reject expi
 sessions.
 
 
-## Default Accounts
+## First Run and Accounts
 
-The SQLite database is initialized automatically on first startup.
-The following accounts are seeded only when they do not already exist:
+The SQLite database is created automatically on first startup. Accounts are seeded
+**only when the users table is empty** -- an account you delete is never re-created
+on the next restart (older versions re-inserted the four demo accounts, with their
+public passwords, on every start).
+
+| Setting (environment variable) | Effect on the first run |
+|---|---|
+| *(nothing set)* | One account, `superadmin`, with a **random password**. It is printed to the console (`docker logs pyshiny`) and saved to `db/initial_superadmin_password.txt` (mode 600). The file is deleted automatically once the superadmin password is changed. |
+| `INITIAL_SUPERADMIN_PASSWORD=...` | `superadmin` gets this password instead (nothing is written to disk). |
+| `DEMO_ACCOUNTS=1` | Also creates the demo accounts below (testing / tutorials only). Without `INITIAL_SUPERADMIN_PASSWORD`, `superadmin` then gets the demo password too. |
+
+Demo accounts (`DEMO_ACCOUNTS=1` only):
 
 | Username | Password | Role | Expiration |
 |---|---|---|---|
@@ -590,9 +600,24 @@ The following accounts are seeded only when they do not already exist:
 | `guest` | `Guest123!` | Guest | None |
 
 Passwords are not stored as plaintext. The application uses PBKDF2-HMAC-SHA256
-with a per-password random salt.
+with a per-password random salt. A Superadmin may set any password (length 8-128)
+for any account, including their own.
 
-Change the default passwords before using the application in a real environment.
+### Security settings
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SESSION_MAX_HOURS` | `12` | A signed-in session ends after this many hours even if the tab stays open (`0` = no limit). |
+| `TRUST_PROXY_HEADERS` | `0` | `1` only behind your own reverse proxy: the client IP is then taken from the right-most `X-Forwarded-For` entry. |
+| `HSTS` | `0` | `1` only when the site is served over HTTPS (adds `Strict-Transport-Security`). |
+
+Built in (no setting): security headers on every response (no framing, `nosniff`,
+no referrer, restrictive permissions policy), an upload size cap, sign-out of every
+other session of an account when its password is changed or reset, account
+lockout after 5 wrong passwords (login form, password dialogs and the change-password
+form share it), and a per-page limit on failed sign-in attempts. A wrong CAPTCHA does
+**not** count towards the account lockout, so nobody can lock another person's
+account by submitting junk.
 
 ## User details: identification code, email, phone
 

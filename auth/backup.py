@@ -47,6 +47,7 @@ MAX_IMPORT_BYTES = 50 * 1024 * 1024  # 50 MB
 
 _SQLITE_MAGIC = b"SQLite format 3\x00"
 _REQUIRED_COLUMNS = {"id", "username", "password_hash", "role", "is_active", "expire_date"}
+_VALID_ROLES = ("superadmin", "admin", "user", "guest")  # = auth.core.ROLE_LEVELS
 
 
 @dataclass(frozen=True)
@@ -144,7 +145,16 @@ def _check_integrity(path: Path):
     """Open read-only, run the integrity check, return the open connection."""
     con = sqlite3.connect(f"{Path(path).resolve().as_uri()}?mode=ro", uri=True)
     try:
+        # Never let schema objects of an untrusted file run code in our queries.
+        con.execute("PRAGMA trusted_schema=OFF")
         if con.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise ValueError(t("err_backup_invalid"))
+        # Triggers / views would be copied into the live database by a restore and
+        # could silently change rows later (e.g. promote an account). Our own
+        # databases never contain any, so a file that does is rejected.
+        if con.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type IN ('trigger','view')"
+        ).fetchone()[0]:
             raise ValueError(t("err_backup_invalid"))
     except Exception:
         con.close()
@@ -158,6 +168,11 @@ def _validate_accounts(path: Path) -> None:
             columns = {row[1] for row in con.execute("PRAGMA table_info(users)").fetchall()}
             if not _REQUIRED_COLUMNS <= columns:
                 raise ValueError(t("err_backup_invalid"))
+            marks = ",".join("?" * len(_VALID_ROLES))
+            if con.execute(
+                f"SELECT COUNT(*) FROM users WHERE role NOT IN ({marks})", _VALID_ROLES
+            ).fetchone()[0]:
+                raise ValueError(t("err_backup_invalid"))
             has_superadmin = con.execute(
                 "SELECT COUNT(*) FROM users WHERE role='superadmin' AND is_active=1"
             ).fetchone()[0]
@@ -165,6 +180,14 @@ def _validate_accounts(path: Path) -> None:
                 raise ValueError(t("err_backup_no_superadmin"))
     except sqlite3.DatabaseError as exc:
         raise ValueError(t("err_backup_invalid")) from exc
+
+
+def _private(path: Path) -> None:
+    """Backups hold password hashes: owner read/write only (best effort)."""
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
 
 
 # ------------------------------------------------------- generic operations
@@ -178,6 +201,7 @@ def engine_create(spec: Spec, db_path: Path, kind: str = "manual") -> dict:
     try:
         with closing(sqlite3.connect(db_path)) as src, closing(sqlite3.connect(partial)) as dst:
             src.backup(dst)
+        _private(partial)
         os.replace(partial, target)
     finally:
         partial.unlink(missing_ok=True)
@@ -213,6 +237,7 @@ def engine_import(spec: Spec, db_path: Path, data: bytes) -> dict:
     partial = target.with_suffix(".partial")
     try:
         partial.write_bytes(data)
+        _private(partial)
         spec.validate(partial)
         os.replace(partial, target)
     finally:

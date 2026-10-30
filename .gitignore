@@ -6,6 +6,8 @@ db/audit.db
 db/audit.db-wal
 db/audit.db-shm
 db/backups/
+db/log_backups/
+db/initial_superadmin_password.txt
 
 # Local Docker environment (created from .env.example by bootstrap)
 docker/.env

@@ -120,7 +120,10 @@ class _Flow:
 
     # ------------------------------------------------------------- helpers
     def _toast(self, text: str, kind: str = "error") -> None:
-        self.notify(text, type=kind, duration=6)
+        try:
+            self.notify(text, type=kind, duration=6)
+        except RuntimeError:
+            pass  # no active Shiny session (unit tests / shutdown): nothing to show
 
     def _log(self, event: str, person, severity: str = "info", **detail) -> None:
         audit.log_event(

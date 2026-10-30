@@ -63,16 +63,22 @@ def _ui():
 
 
 @module.server
-def _server(input, output, session):
+def _server(input, output, session, get_session_user=None):
     created = reactive.Value("")
+    # SERVER-SIDE role check. Hiding the sidebar link is not enough: a crafted
+    # page can still fire tab_08-go or bind tab_08-result. See tabs/_access.py.
+    allowed = gate(get_session_user, NAV_MIN_ROLE)
 
     @reactive.effect
     @reactive.event(input.go)
     def _go():
+        if not allowed():
+            return
         created.set(f"Created: {input.name()}")
 
     @render.text
     def result():
+        req(allowed())          # no output for a role that is too low
         return created()
 
 
@@ -81,10 +87,13 @@ def panel():
     return _ui(MODULE_ID)
 
 
-def server():
+def server(get_session_user=None):
     """Called by app.py ONCE when a browser session starts."""
-    _server(MODULE_ID)
+    _server(MODULE_ID, get_session_user=get_session_user)
 ```
+
+(imports for the snippet: `from shiny import module, reactive, render, req, ui` and
+`from tabs._access import gate`)
 
 #### The `NAV_*` constants
 
@@ -121,13 +130,12 @@ The order of this list is the order of the sidebar. Put `tab_account`,
 Inside `def server(input, output, session):` next to the other tabs:
 
 ```python
-    tab_01.server()
-    ...
-    tab_06.server()
-    tab_08.server()      # <-- add this line
-    # (tab_07 and tab_logs are registered further down, after
-    #  _ensure_valid_session is defined, because they need it)
+    for content_tab in (tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_08):  # <-- add it here
+        content_tab.server(_ensure_valid_session)
 ```
+
+(This loop sits right after `_ensure_valid_session` is defined: every content tab
+receives the re-validated session user so it can check the role itself.)
 
 Rules:
 

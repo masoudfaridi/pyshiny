@@ -1,10 +1,15 @@
 """Shared fixtures: isolated SQLite DB, role contexts, and path setup."""
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 import pytest
+
+# The suite logs in with the documented demo accounts; seeding them is opt-in
+# since production first runs create only a superadmin with a random password.
+os.environ.setdefault("DEMO_ACCOUNTS", "1")
 
 def contact(name: str) -> dict:
     """Valid, unique identification code / e-mail / phone derived from a username.

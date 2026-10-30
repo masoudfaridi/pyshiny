@@ -9,8 +9,10 @@ See ``tab_01.py`` for the full module explanation.
 from __future__ import annotations
 
 import numpy as np
-from matplotlib import pyplot as plt
-from shiny import module, reactive, render, ui
+from shiny import module, reactive, render, req, ui
+
+from tabs._access import finite as _finite
+from tabs._access import gate
 
 NAV_ID = "tab_02"
 NAV_LABEL = "Poisson"
@@ -65,28 +67,38 @@ def _ui():
 
 
 @module.server
-def _server(input, output, session):
+def _server(input, output, session, get_session_user=None):
     """Server logic scoped to ``tab_02-...`` inputs/outputs."""
     sample = reactive.Value(None)
+    # Server-side role check (see tabs/_access.py): the sidebar only hides links.
+    allowed = gate(get_session_user, NAV_MIN_ROLE)
 
     @reactive.effect
     @reactive.event(input.generate)
     def _generate():
-        lam = float(input.lambda_())
-        n = int(input.n())
-
-        if lam <= 0:
-            sample.set({"error": "λ must be positive."})
+        if not allowed():
             return
-        if n < 2 or n > 50_000:
-            sample.set({"error": "Sample size must be between 2 and 50,000."})
-            return
+        try:
+            lam = _finite(input.lambda_())
+            n = int(input.n())
 
-        data = np.random.default_rng().poisson(lam=lam, size=n)
-        sample.set({"data": data, "lam": lam, "n": n, "error": None})
+            if lam <= 0:
+                sample.set({"error": "λ must be positive."})
+                return
+            if n < 2 or n > 50_000:
+                sample.set({"error": "Sample size must be between 2 and 50,000."})
+                return
+
+            data = np.random.default_rng().poisson(lam=lam, size=n)
+            sample.set({"data": data, "lam": lam, "n": n, "error": None})
+        except (TypeError, ValueError, OverflowError):
+            # Empty / non-numeric / out-of-range input: show a message instead
+            # of letting the exception end the whole browser session.
+            sample.set({"error": "Please enter valid numbers."})
 
     @render.ui
     def summary():
+        req(allowed())
         state = sample()
         if state is None:
             return ui.p("Press Generate sample to draw data.", class_="text-muted")
@@ -108,6 +120,9 @@ def _server(input, output, session):
 
     @render.plot
     def hist():
+        req(allowed())
+        from matplotlib import pyplot as plt  # lazy: keeps app start-up light
+
         state = sample()
         fig, ax = plt.subplots(figsize=(7.2, 3.6))
         if state is None or state.get("error"):
@@ -142,6 +157,6 @@ def panel():
     return _ui(MODULE_ID)
 
 
-def server():
+def server(get_session_user=None):
     """Register once from app.py: ``tab_02.server()``."""
-    _server(MODULE_ID)
+    _server(MODULE_ID, get_session_user=get_session_user)

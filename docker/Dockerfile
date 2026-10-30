@@ -32,19 +32,22 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Application code.
 COPY . .
 
-# db/ holds the SQLite file that auth/core.py creates automatically on
-# first run (seeded with the four default accounts). It's meant to be
-# mounted as a volume -- see docker-compose.yml and docker/run.sh -- so
-# accounts you create/edit survive container restarts and rebuilds instead
-# of resetting every time the image runs.
+# db/ holds the SQLite files that auth/core.py creates automatically on
+# first run (a superadmin with a random password, printed in `docker logs`
+# and saved to db/initial_superadmin_password.txt). It's meant to be mounted
+# as a volume -- see docker-compose.yml and docker/run.sh -- so accounts
+# survive container restarts and rebuilds.
 #
-# Run as a non-root user rather than the container default of root.
+# Run as a non-root user. The application code stays owned by root (read-only
+# for the app user); only db/ is writable.
 RUN useradd --create-home --uid 1000 appuser \
     && mkdir -p /app/db \
-    && chown -R appuser:appuser /app
+    && chown appuser:appuser /app/db \
+    && chmod 700 /app/db
 
 COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Strip Windows line endings (a CRLF checkout would make the entrypoint fail).
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 USER appuser
 
@@ -53,7 +56,9 @@ USER appuser
 # value you pick, publish the same port with `-p PORT:PORT`. docker/run.sh
 # and docker-compose.yml both do this for you automatically from a single
 # PORT value, so you never have to edit this file to change ports.
-ENV PORT=8000
+ENV PORT=8000 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 # Interface language: "en" (English, LTR) or "fa" (Persian, RTL). Override with
 # `-e APP_LANG=fa` (docker/run.sh and docker-compose.yml pass it through).
 ENV APP_LANG=en

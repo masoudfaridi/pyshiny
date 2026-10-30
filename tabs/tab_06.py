@@ -73,6 +73,10 @@ def panel():
     return _ui(MODULE_ID)
 
 
-def server():
-    """Register once from app.py: ``tab_06.server()``."""
+def server(get_session_user=None):
+    """Register once from app.py: ``tab_06.server(_ensure_valid_session)``.
+
+    No outputs yet. When you add some, gate them like tabs/tab_01.py does
+    (``allowed = gate(get_session_user, NAV_MIN_ROLE)`` + ``req(allowed())``).
+    """
     _server(MODULE_ID)
