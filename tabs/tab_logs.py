@@ -78,6 +78,7 @@ from auth import (
 from auth.audit import SETTING_LIMITS
 from auth.backup import MAX_IMPORT_BYTES, format_size
 from i18n import APP_LANG, role_label, t
+from tabs._forms import file_input
 
 NAV_ID = "tab_logs"
 NAV_ICON = "bi-journal-text"
@@ -661,7 +662,7 @@ def _log_backup_card():
         ),
         ui.div(
             ui.div(
-                ui.input_file(
+                file_input(
                     "logbackup_upload", _tx("lb_upload"),
                     accept=[".db", ".sqlite", ".sqlite3"], multiple=False,
                     button_label=t("file_browse"), placeholder=t("file_none"), width="100%",

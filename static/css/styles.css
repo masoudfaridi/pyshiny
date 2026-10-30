@@ -325,6 +325,7 @@ body {
 .form-grid-cell { align-self:end; }
 @media (max-width: 575.98px) { .form-grid { grid-template-columns:1fr; } }
 .backup-file { flex:1 1 280px; min-width:0; }
+.btn-file { position:relative; overflow:hidden; }  /* holds the invisible file input (tabs/_forms.py) */
 
 /* Dark-mode surfaces used by authentication and user management. */
 [data-theme^="dark"] { --card-bg: #0f172a; --surface-2: rgba(255,255,255,.06); }

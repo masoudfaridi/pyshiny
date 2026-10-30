@@ -489,6 +489,27 @@
     });
   }
 
+  // Safety net for file pickers in right-to-left pages: some browsers scroll the
+  // content area far sideways when focus returns from the native file dialog
+  // (the page then looks blank). Undo any such jump. See tabs/_forms.py.
+  function resetSidewaysScroll() {
+    [document.querySelector(".app-main"), document.querySelector(".app-body"),
+     document.scrollingElement].forEach((el) => {
+      if (el && el.scrollLeft !== 0) {
+        el.scrollLeft = 0;
+      }
+    });
+  }
+  ["change", "focusin", "cancel"].forEach((type) => {
+    document.addEventListener(type, (event) => {
+      const t = event.target;
+      if (t && t.matches && t.matches("input[type=file]")) {
+        resetSidewaysScroll();
+        window.requestAnimationFrame(resetSidewaysScroll);
+      }
+    }, true);
+  });
+
   // The Logs tab (user behaviour report) shows hours / weekdays in the browser's
   // own time zone: tell the server the offset from UTC, in minutes.
   document.addEventListener("shiny:connected", function () {

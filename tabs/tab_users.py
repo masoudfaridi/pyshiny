@@ -3,7 +3,7 @@
 from shiny import ui
 
 from i18n import role_label, t
-from tabs._forms import password_input, text_input
+from tabs._forms import file_input, password_input, text_input
 
 # Unique identifier used to map sidebar navigation to this module.
 NAV_ID = "tab_users"
@@ -93,7 +93,7 @@ def panel():
                     "backup_create", t("backup_create"), class_="btn btn-primary"
                 ),
                 ui.div(
-                    ui.input_file(
+                    file_input(
                         "backup_upload",
                         t("backup_upload_label"),
                         accept=[".db", ".sqlite", ".sqlite3"],
