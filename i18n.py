@@ -147,6 +147,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "users_intro": "Only Superadmin users can create, edit, and delete accounts.",
         "users_create_heading": "Create user",
         "users_create_button": "Create user",
+        "users_new_button": "New user",
+        "file_browse": "Browse...",
+        "file_none": "No file selected",
+        "date_separator": " to ",
         "users_existing_heading": "Existing users",
         "users_existing_hint": (
             "Use Change to edit an account in a popup, or Delete to remove it."
@@ -404,6 +408,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "users_intro": "فقط مدیر کل می‌تواند حساب‌ها را ایجاد، ویرایش و حذف کند.",
         "users_create_heading": "ایجاد کاربر",
         "users_create_button": "ایجاد کاربر",
+        "users_new_button": "کاربر جدید",
+        "file_browse": "انتخاب فایل...",
+        "file_none": "فایلی انتخاب نشده",
+        "date_separator": " تا ",
         "users_existing_heading": "کاربران موجود",
         "users_existing_hint": (
             "برای ویرایش حساب در یک پنجره‌ی بازشو، «ویرایش» و برای حذف آن، "

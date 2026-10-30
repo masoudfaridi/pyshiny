@@ -171,10 +171,22 @@ class TestPanelsRender:
         from tabs import tab_users
 
         html = str(tab_users.panel())
-        for element in ('id="new_id_code"', 'id="new_email"', 'id="new_phone"',
+        for element in ('id="create_user_open"',
                         'id="backup_create"', 'id="backup_upload"', 'id="backup_import"',
                         'id="backups_table"'):
             assert element in html, element
+        # The create form lives in a popup now (opened by "New user").
+        form = str(tab_users.create_user_modal())
+        for element in ('id="new_username"', 'id="new_id_code"', 'id="new_email"',
+                        'id="new_phone"', 'id="new_password"', 'id="create_user"'):
+            assert element in form, element
+
+    def test_admin_forms_do_not_invite_password_autofill(self):
+        from tabs import tab_users
+
+        form = str(tab_users.create_user_modal({"username": "bob", "role": "admin"}))
+        assert form.count('autocomplete="new-password"') == 2
+        assert 'value="bob"' in form
 
     def test_account_panel_shows_own_details(self, isolated_db):
         from tabs import tab_account

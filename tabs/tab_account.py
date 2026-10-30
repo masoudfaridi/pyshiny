@@ -4,6 +4,7 @@ from shiny import ui
 
 from auth import current_user
 from i18n import role_label, t
+from tabs._forms import password_input, with_input_attrs
 
 NAV_ID = "tab_account"
 NAV_LABEL = t("nav_account")
@@ -55,9 +56,12 @@ def panel():
                 6,
                 ui.div(
                     ui.h4(t("account_change_heading")),
-                    ui.input_password("current_password", t("account_current_password")),
-                    ui.input_password("new_own_password", t("account_new_password")),
-                    ui.input_password("new_own_password_confirm", t("confirm_new_password")),
+                    with_input_attrs(
+                        ui.input_password("current_password", t("account_current_password")),
+                        autocomplete="current-password",
+                    ),
+                    password_input("new_own_password", t("account_new_password")),
+                    password_input("new_own_password_confirm", t("confirm_new_password")),
                     ui.input_action_button(
                         "change_password_button",
                         t("account_change_button"),

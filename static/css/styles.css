@@ -255,6 +255,8 @@ body {
 .logout-button { border:1px solid var(--border); background:transparent; color:var(--text); border-radius:8px; padding:.4rem .65rem; margin-inline-end:.75rem; }
 .logout-button:hover { background:var(--surface-2); }
 .user-form-card { max-width:620px; padding:1.25rem; border:1px solid var(--border); border-radius:14px; background:var(--card-bg); }
+/* Full-width cards (Logs tab, backups): use the whole row instead of 620px. */
+.user-form-card.wide { max-width:none; }
 .user-form-card .form-group { margin-bottom:.8rem; }
 .user-create-message { margin-top:1rem; font-weight:600; }
 .users-table { width:100%; border-collapse:collapse; background:var(--card-bg); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
@@ -262,13 +264,57 @@ body {
 .users-table th { background:var(--surface-2); }
 
 /* Logs tab: filter bar (one aligned flex row; wraps on narrow screens) */
-.log-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:.75rem 1rem; }
-.log-filters .log-field { flex:1 1 170px; min-width:150px; }
-.log-filters .log-field-narrow { flex:0 1 120px; min-width:100px; }
-.log-filters .shiny-input-container { width:100%; max-width:none; margin-bottom:0; }
-.log-filters label { white-space:nowrap; margin-bottom:.35rem; }
+/* Filter / settings bars: a responsive grid that fills the whole row. Every
+   cell is a bottom-aligned column, so inputs line up even when a label wraps
+   onto two lines (labels used to be nowrap and spilled over their neighbours). */
+.log-filters { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:1rem 1.25rem; align-items:end; }
+.log-filters > .shiny-html-output { display:contents; }
+.log-filters .log-field { display:flex; flex-direction:column; justify-content:flex-end; min-width:0; }
+.log-filters .log-field-wide { grid-column:span 2; }
+.log-filters .log-field-narrow { max-width:none; }
+.log-filters .shiny-input-container { width:100% !important; max-width:none; margin-bottom:0; }
+.log-filters label { white-space:normal; margin-bottom:.35rem; line-height:1.35; }
 .log-filters .log-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; }
 .log-filters .log-actions .btn { white-space:nowrap; margin:0; }
+.log-filters .input-daterange { width:100%; }
+.log-filters .input-daterange input { min-width:0; }
+/* Fixed column plans per bar (by the CARD's width, via container queries), so
+   every row is filled edge to edge and nothing drops to a new line for no reason. */
+.user-form-card.wide { container-type:inline-size; }
+.log-grid-events, .log-grid-analytics, .log-settings-grid { grid-template-columns:minmax(0, 1fr); }
+.log-filters .log-actions { justify-content:flex-end; }
+@container (min-width: 560px) {
+  .log-grid-events { grid-template-columns:repeat(3, minmax(0, 1fr)) auto; }
+  .log-grid-analytics { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+  .log-grid-analytics .log-checks { grid-column:span 2; }
+  .log-settings-grid { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+}
+@container (min-width: 960px) {
+  .log-grid-analytics { grid-template-columns:repeat(6, minmax(0, 1fr)); }
+  .log-grid-analytics .log-checks,
+  .log-grid-analytics .log-actions { grid-column:span 3; }
+}
+@container (max-width: 559.98px) {
+  .log-filters .log-field-wide, .log-grid-analytics .log-checks { grid-column:auto; }
+  .log-filters .log-actions { justify-content:flex-start; }
+}
+.log-check-inline { padding-bottom:.45rem; }
+.log-check-inline .checkbox, .log-check-inline .form-check { margin:0; }
+.log-checks .shiny-options-group { display:flex; flex-wrap:wrap; gap:.25rem 1.25rem; }
+.log-chip-row { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; }
+.log-chip { background:var(--surface-2); border:1px solid var(--border); border-radius:999px; padding:.15rem .7rem; font-size:.85rem; }
+@media (max-width: 575.98px) {
+  .log-filters { grid-template-columns:1fr; }
+  .log-filters .log-field-wide { grid-column:auto; }
+}
+
+/* Users page: title + "New user" button on one line; popup forms in two columns. */
+.page-header-row { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:1rem; }
+.form-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.25rem 1.25rem; align-items:start; }
+.form-grid .shiny-input-container { width:100% !important; max-width:none; }
+.form-grid-cell { align-self:end; }
+@media (max-width: 575.98px) { .form-grid { grid-template-columns:1fr; } }
+.backup-file { flex:1 1 280px; min-width:0; }
 
 /* Dark-mode surfaces used by authentication and user management. */
 [data-theme^="dark"] { --card-bg: #0f172a; --surface-2: rgba(255,255,255,.06); }

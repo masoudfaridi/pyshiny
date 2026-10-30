@@ -44,6 +44,7 @@ import time
 from pathlib import Path
 
 from shiny import App, reactive, render, ui
+from shiny.types import SilentException
 import sqlite3
 
 from auth import (
@@ -84,6 +85,7 @@ from auth import (
 
 from security import SecurityMiddleware
 from i18n import APP_LANG, DIRECTION, IS_RTL, js_bundle, role_label, t
+from tabs._forms import password_input, text_input
 from tabs import tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_account, tab_users, tab_logs
 
 APP_DIR = Path(__file__).parent
@@ -421,6 +423,8 @@ def server(input, output, session):
     logged_in_user = reactive.Value(None)
     login_error = reactive.Value("")
     create_message = reactive.Value("")
+    create_modal_message = reactive.Value("")  # errors shown inside the create popup
+    create_prefill = reactive.Value({})        # values to restore when the popup reopens
     account_message = reactive.Value("")
     profile_message = reactive.Value("")
     users_refresh = reactive.Value(0)
@@ -841,11 +845,27 @@ def server(input, output, session):
             "phone": validate_phone(input.new_phone()),
         }
 
+    def _show_create_modal(values: dict | None = None, message: str = "") -> None:
+        """Open the "create user" popup (optionally re-filled after a failed save)."""
+        create_prefill.set(dict(values or {}))
+        create_modal_message.set(message)
+        ui.modal_show(tab_users.create_user_modal(values))
+
+    @reactive.effect
+    @reactive.event(input.create_user_open)
+    def _open_create_modal():
+        current = _ensure_valid_session()
+        if not current or current["role"] != "superadmin":
+            return
+        create_message.set("")
+        pending.pop("create", None)
+        _show_create_modal()
+
     @reactive.effect
     @reactive.event(input.create_user)
     def _create_user_event():
-        # Step 1 (click): read the session and check the form. Mistakes are
-        # reported in the form, before any password is asked.
+        # Step 1 (Save in the popup): check the form. Mistakes are shown inside
+        # the popup, before any password is asked.
         # Step 2: _run_create_user() -- confirmation dialog + the user's password.
         current = _ensure_valid_session()
         if not current:
@@ -853,38 +873,45 @@ def server(input, output, session):
         try:
             form = _create_form()
         except ValueError as exc:
-            create_message.set(str(exc))
+            create_modal_message.set(str(exc))
             return
-        create_message.set("")
-        pending["create_username"] = form["username"]
+        create_modal_message.set("")
+        pending["create"] = form  # the confirmation dialog replaces the popup
         _run_create_user()
 
     @confirm_with_password(
         input, _ensure_valid_session,
-        message=lambda: t("users_confirm_create", username=pending.get("create_username", "")),
+        message=lambda: t("users_confirm_create",
+                          username=pending.get("create", {}).get("username", "")),
         required_role="superadmin",
     )
     def _run_create_user():
         # Runs ONLY after the dialog and the correct password (see auth/confirm.py).
+        form = pending.pop("create", None)
+        if not form:
+            return
         try:
-            form = _create_form()
             create_user(
                 form["username"], form["password"], form["role"], form["expire_date"],
                 id_code=form["id_code"], email=form["email"], phone=form["phone"],
             )
         except PermissionError:
-            create_message.set(t("users_denied_create"))
+            _toast(t("users_denied_create"), "error")
             return
-        except sqlite3.IntegrityError:
-            create_message.set(t("users_exists"))
-            return
-        except ValueError as exc:
-            create_message.set(str(exc))
+        except (sqlite3.IntegrityError, ValueError) as exc:
+            # e.g. username / identification code already taken: reopen the
+            # popup with what was typed (passwords must be entered again).
+            message = t("users_exists") if isinstance(exc, sqlite3.IntegrityError) else str(exc)
+            _show_create_modal({k: v for k, v in form.items() if k != "password"}, message)
             return
         create_message.set(t("users_created"))
+        _toast(t("users_created"))
         users_refresh.set(users_refresh() + 1)
-        for field in ("new_username", "new_id_code", "new_email", "new_phone"):
-            ui.update_text(field, value="")
+
+    @render.ui
+    def create_modal_message_ui():
+        message = create_modal_message()
+        return ui.div(message, class_="login-error mt-3") if message else ui.div()
 
     @render.ui
     def user_create_message():
@@ -899,7 +926,7 @@ def server(input, output, session):
         # Show an optional expiration date for non-Superadmin accounts only.
         try:
             role = input.new_role()
-        except (AttributeError, TypeError):
+        except (AttributeError, TypeError, SilentException):
             role = "guest"
 
         if role == "superadmin":
@@ -908,11 +935,13 @@ def server(input, output, session):
                 class_="form-text text-muted",
             )
 
+        # Depends on create_prefill: every (re)opened popup redraws this field.
+        prefill = create_prefill()
         return ui.div(
             ui.input_checkbox(
                 "new_expire_enabled",
                 t("set_expiry"),
-                value=False,
+                value=bool(prefill.get("expire_date")),
             ),
             ui.output_ui("create_expiry_date_input"),
         )
@@ -926,9 +955,13 @@ def server(input, output, session):
             enabled = False
         if not enabled:
             return ui.div()
+        # Depends on create_prefill: every (re)opened popup redraws this field.
+        prefill = create_prefill()
         return ui.input_date(
             "new_expire_date",
             t("expiry_date"),
+            value=prefill.get("expire_date"),
+            width="100%",
         )
 
 
@@ -942,44 +975,30 @@ def server(input, output, session):
         has_expiry = bool(selected.get("expire_date"))
         return ui.modal(
             ui.div(
-                ui.input_text(
-                    "edit_username",
-                    t("username"),
-                    value=selected["username"],
-                ),
-                ui.input_text(
-                    "edit_id_code", t("id_code"), value=selected.get("id_code") or ""
-                ),
-                ui.input_text(
-                    "edit_email", t("email"), value=selected.get("email") or ""
-                ),
-                ui.input_text(
-                    "edit_phone", t("phone"), value=selected.get("phone") or ""
-                ),
-                ui.input_select(
-                    "edit_role",
-                    t("access_level"),
-                    {
-                        "guest": role_label("guest"),
-                        "user": role_label("user"),
-                        "admin": role_label("admin"),
-                        "superadmin": role_label("superadmin"),
-                    },
-                    selected=selected["role"],
-                ),
-                ui.output_ui("edit_expiry_field"),
-                ui.input_checkbox(
-                    "edit_is_active",
-                    t("edit_active"),
-                    value=bool(selected["is_active"]),
-                ),
-                ui.input_password(
-                    "edit_password",
-                    t("edit_new_password"),
-                ),
-                ui.input_password(
-                    "edit_password_confirm",
-                    t("confirm_new_password"),
+                ui.div(
+                    text_input("edit_username", t("username"), selected["username"]),
+                    text_input("edit_id_code", t("id_code"), selected.get("id_code") or "", ltr=True),
+                    text_input("edit_email", t("email"), selected.get("email") or "", ltr=True),
+                    text_input("edit_phone", t("phone"), selected.get("phone") or "", ltr=True),
+                    password_input("edit_password", t("edit_new_password")),
+                    password_input("edit_password_confirm", t("confirm_new_password")),
+                    ui.input_select(
+                        "edit_role",
+                        t("access_level"),
+                        {r: role_label(r) for r in ("guest", "user", "admin", "superadmin")},
+                        selected=selected["role"],
+                        width="100%",
+                    ),
+                    ui.div(
+                        ui.output_ui("edit_expiry_field"),
+                        ui.input_checkbox(
+                            "edit_is_active",
+                            t("edit_active"),
+                            value=bool(selected["is_active"]),
+                        ),
+                        class_="form-grid-cell",
+                    ),
+                    class_="form-grid",
                 ),
                 ui.output_ui("edit_modal_message_ui"),
                 class_="user-edit-modal-body",
@@ -987,15 +1006,19 @@ def server(input, output, session):
             title=t("edit_title", username=selected["username"]),
             easy_close=True,
             footer=ui.div(
-                ui.input_action_button(
-                    "save_user", t("edit_save"), class_="btn btn-primary"
+                ui.div(
+                    ui.input_action_button(
+                        "save_user", t("edit_save"), class_="btn btn-primary"
+                    ),
+                    ui.modal_button(t("edit_cancel"), class_="btn btn-secondary"),
+                    class_="d-flex gap-2",
                 ),
                 ui.input_action_button(
-                    "delete_user", t("edit_delete"), class_="btn btn-danger ms-2"
+                    "delete_user", t("edit_delete"), class_="btn btn-outline-danger"
                 ),
-                ui.modal_button(t("edit_cancel"), class_="btn btn-secondary ms-2"),
+                class_="d-flex w-100 align-items-center justify-content-between",
             ),
-            size="m",
+            size="l",
         )
 
     @render.ui

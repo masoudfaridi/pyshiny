@@ -77,7 +77,7 @@ from auth import (
 )
 from auth.audit import SETTING_LIMITS
 from auth.backup import MAX_IMPORT_BYTES, format_size
-from i18n import APP_LANG, role_label
+from i18n import APP_LANG, role_label, t
 
 NAV_ID = "tab_logs"
 NAV_ICON = "bi-journal-text"
@@ -591,7 +591,7 @@ def _analytics_panel():
     return ui.div(
         ui.h5(_tx("an_title")),
         ui.p(_tx("an_intro"), class_="text-muted"),
-        ui.div(
+        ui.div(ui.div(
             ui.div(
                 ui.input_select(
                     "a_period", _tx("an_period"),
@@ -604,8 +604,9 @@ def _analytics_panel():
                 ui.input_date_range(
                     "a_dates", _tx("an_dates"),
                     start=today - timedelta(days=30), end=today,
+                    separator=t("date_separator"), width="100%",
                 ),
-                class_="log-field",
+                class_="log-field log-field-wide",
             ),
             ui.div(ui.output_ui("analytics_user_field"), class_="log-field"),
             ui.div(
@@ -639,8 +640,8 @@ def _analytics_panel():
                 ui.output_ui("analytics_download", inline=True),
                 class_="log-actions",
             ),
-            class_="user-form-card log-filters mb-3",
-        ),
+            class_="log-filters log-grid-analytics",
+        ), class_="user-form-card wide mb-3"),
         ui.output_ui("analytics_summary"),
         ui.output_ui("analytics_users"),
         ui.output_ui("analytics_charts"),
@@ -659,15 +660,19 @@ def _log_backup_card():
             class_="backup-toolbar",
         ),
         ui.div(
-            ui.input_file(
-                "logbackup_upload", _tx("lb_upload"),
-                accept=[".db", ".sqlite", ".sqlite3"], multiple=False,
+            ui.div(
+                ui.input_file(
+                    "logbackup_upload", _tx("lb_upload"),
+                    accept=[".db", ".sqlite", ".sqlite3"], multiple=False,
+                    button_label=t("file_browse"), placeholder=t("file_none"), width="100%",
+                ),
+                class_="backup-file",
             ),
             ui.input_action_button("lb_import", _tx("lb_import"), class_="btn btn-secondary"),
             class_="backup-toolbar",
         ),
         ui.div(ui.output_ui("lb_table"), class_="table-scroll mt-3"),
-        class_="user-form-card mb-3",
+        class_="user-form-card wide mb-3",
     )
 
 
@@ -676,7 +681,7 @@ def _events_panel():
     return ui.div(
         # One flex row: equal-height fields, labels on one line, buttons aligned
         # with the bottom of the inputs. Styles: ".log-filters" in styles.css.
-        ui.div(
+        ui.div(ui.div(
             ui.div(
                 ui.input_select(
                     "severity",
@@ -713,8 +718,8 @@ def _events_panel():
                 ui.output_ui("download_link", inline=True),
                 class_="log-actions",
             ),
-            class_="user-form-card log-filters mb-3",
-        ),
+            class_="log-filters log-grid-events",
+        ), class_="user-form-card wide mb-3"),
         ui.navset_tab(
             ui.nav_panel(_tx("cat_auth"), ui.output_ui("table_auth"), value="auth"),
             ui.nav_panel(
@@ -740,7 +745,7 @@ def _settings_panel():
                 ),
                 class_="log-actions mt-3",
             ),
-            class_="user-form-card mb-3",
+            class_="user-form-card wide mb-3",
         ),
         ui.div(
             ui.h5(_tx("cleanup_title")),
@@ -761,7 +766,7 @@ def _settings_panel():
                 ),
                 class_="log-actions mt-2",
             ),
-            class_="user-form-card mb-3",
+            class_="user-form-card wide mb-3",
         ),
         _log_backup_card(),
     )
@@ -902,15 +907,15 @@ def _server(input, output, session, get_session_user):
             number("ret_auth", "ret_auth", "retention_days_auth"),
             number("ret_security", "ret_security", "retention_days_security"),
             number("purge_interval", "purge_interval", "purge_interval_hours"),
+            number("purge_backup_keep", "purge_backup_keep", "purge_backup_keep"),
             ui.div(
                 ui.input_checkbox(
                     "purge_backup_on", _tx("purge_backup_enabled"),
                     bool(settings["purge_backup_enabled"]),
                 ),
-                class_="log-field log-checks",
+                class_="log-field log-checks log-check-inline",
             ),
-            number("purge_backup_keep", "purge_backup_keep", "purge_backup_keep"),
-            class_="log-filters",
+            class_="log-filters log-settings-grid",
         )
 
     # Order matters: effect -> event -> @confirm_with_password -> callback.
@@ -946,20 +951,16 @@ def _server(input, output, session, get_session_user):
         if error:
             return ui.div(_tx(error), class_="login-error")
         size_mb, size_error = _guarded(audit_log_size_mb)
-        size_text = "" if size_error else f"{size_mb:.2f} {_tx('mb')}"
+        chips = [
+            ui.tags.span(_tx(f"cat_{c}"), " ", ui.tags.bdi(str(counts[c])), class_="log-chip")
+            for c in ("navigation", "auth", "security")
+        ]
+        size_cell = [] if size_error else [
+            ui.tags.bdi(f"{size_mb:.2f}", class_="log-size-value"), f" {_tx('mb')}",
+        ]
         return ui.div(
-            ui.p(
-                f"{_tx('stored_rows')}: "
-                f"{_tx('cat_navigation')} {counts['navigation']} \u00b7 "
-                f"{_tx('cat_auth')} {counts['auth']} \u00b7 "
-                f"{_tx('cat_security')} {counts['security']}",
-                class_="mb-1",
-            ),
-            ui.p(
-                ui.tags.strong(f"{_tx('log_size')}: "),
-                ui.tags.span(size_text, dir="ltr", class_="log-size-value"),
-                class_="mb-1",
-            ),
+            ui.div(ui.tags.strong(f"{_tx('stored_rows')}:"), *chips, class_="log-chip-row"),
+            ui.p(ui.tags.strong(f"{_tx('log_size')}: "), *size_cell, class_="mb-1 mt-2"),
         )
 
     def _clear(category: str | None):
@@ -1019,8 +1020,12 @@ def _server(input, output, session, get_session_user):
             return ui.div()
         return ui.div(
             ui.tags.strong(f"{_tx('size_banner')}: "),
-            ui.tags.span(f"{size_mb:.2f} {_tx('mb')}", dir="ltr", class_="log-size-value"),
-            f" \u00b7 {sum(counts.values())} {_tx('size_banner_rows')}",
+            # <bdi> keeps each number in place inside RTL text ("0.03 MB · 20 rows").
+            ui.tags.bdi(f"{size_mb:.2f}", class_="log-size-value"),
+            f" {_tx('mb')}",
+            ui.tags.span("|", class_="mx-2 text-muted"),
+            ui.tags.bdi(str(sum(counts.values()))),
+            f" {_tx('size_banner_rows')}",
             class_="log-size-banner",
         )
 
@@ -1244,7 +1249,9 @@ def _server(input, output, session, get_session_user):
             return ui.div()
         return ui.p(
             ui.tags.strong(f"{_tx('lb_stats')}: "),
-            ui.tags.span(f"{stats['count']} \u00b7 {format_size(stats['bytes'])}", dir="ltr"),
+            ui.tags.bdi(str(stats["count"])),
+            ui.tags.span("|", class_="mx-2 text-muted"),
+            ui.tags.bdi(format_size(stats["bytes"]), dir="ltr"),
             class_="mb-2",
         )
 

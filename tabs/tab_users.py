@@ -3,6 +3,7 @@
 from shiny import ui
 
 from i18n import role_label, t
+from tabs._forms import password_input, text_input
 
 # Unique identifier used to map sidebar navigation to this module.
 NAV_ID = "tab_users"
@@ -16,42 +17,72 @@ NAV_GROUP = None
 NAV_MIN_ROLE = "superadmin"
 
 
-def panel():
-    """Return the user management interface."""
-    # Edit/delete happens via Change buttons in the table and a modal dialog.
+def _roles() -> dict:
+    return {r: role_label(r) for r in ("guest", "user", "admin", "superadmin")}
+
+
+def create_user_form(values: dict | None = None):
+    """Fields of the "create user" popup (two columns on wide screens).
+
+    ``values`` pre-fills the text fields and the role after a failed save, so
+    nothing typed is lost (passwords are never sent back to the browser).
+    """
+    values = values or {}
     return ui.div(
-        ui.h3(t("users_title")),
-        ui.p(t("users_intro")),
         ui.div(
-            ui.h4(t("users_create_heading")),
-            ui.input_text("new_username", t("username")),
-            ui.input_text("new_id_code", t("id_code")),
-            ui.input_text("new_email", t("email")),
-            ui.input_text("new_phone", t("phone")),
-            ui.input_password("new_password", t("password")),
-            ui.input_password("new_password_confirm", t("confirm_password")),
+            text_input("new_username", t("username"), values.get("username", "")),
+            text_input("new_id_code", t("id_code"), values.get("id_code", ""), ltr=True),
+            text_input("new_email", t("email"), values.get("email", ""), ltr=True),
+            text_input("new_phone", t("phone"), values.get("phone", ""), ltr=True),
+            password_input("new_password", t("password")),
+            password_input("new_password_confirm", t("confirm_password")),
             ui.input_select(
-                "new_role",
-                t("access_level"),
-                {
-                    "guest": role_label("guest"),
-                    "user": role_label("user"),
-                    "admin": role_label("admin"),
-                    "superadmin": role_label("superadmin"),
-                },
+                "new_role", t("access_level"), _roles(),
+                selected=values.get("role", "guest"), width="100%",
             ),
-            ui.output_ui("create_expiry_field"),
+            ui.div(ui.output_ui("create_expiry_field"), class_="form-grid-cell"),
+            class_="form-grid",
+        ),
+        ui.output_ui("create_modal_message_ui"),
+        class_="user-create-form",
+    )
+
+
+def create_user_modal(values: dict | None = None):
+    """The popup opened by the "New user" button (see app.py)."""
+    return ui.modal(
+        create_user_form(values),
+        title=t("users_create_heading"),
+        easy_close=False,
+        size="l",
+        footer=ui.div(
             ui.input_action_button(
                 "create_user", t("users_create_button"), class_="btn btn-primary"
             ),
-            ui.output_ui("user_create_message"),
-            class_="user-form-card",
+            ui.modal_button(t("edit_cancel"), class_="btn btn-secondary"),
+            class_="d-flex gap-2",
         ),
-        ui.h4(t("users_existing_heading"), class_="mt-4"),
-        ui.p(
-            t("users_existing_hint"),
-            class_="text-muted small",
+    )
+
+
+def panel():
+    """Return the user management interface."""
+    # Create = popup (button below); edit/delete = Change buttons in the table.
+    return ui.div(
+        ui.div(
+            ui.div(
+                ui.h3(t("users_title"), class_="mb-1"),
+                ui.p(t("users_intro"), class_="text-muted mb-0"),
+            ),
+            ui.input_action_button(
+                "create_user_open",
+                ui.tags.span(ui.tags.i(class_="bi bi-person-plus"), " " + t("users_new_button")),
+                class_="btn btn-primary",
+            ),
+            class_="page-header-row",
         ),
+        ui.output_ui("user_create_message"),
+        ui.p(t("users_existing_hint"), class_="text-muted small mt-3"),
         ui.div(ui.output_ui("users_table"), class_="table-scroll"),
         # ---- accounts database backup / restore (all actions password-protected) ----
         ui.h4(t("backup_title"), class_="mt-4"),
@@ -61,21 +92,24 @@ def panel():
                 ui.input_action_button(
                     "backup_create", t("backup_create"), class_="btn btn-primary"
                 ),
-                class_="backup-toolbar",
-            ),
-            ui.div(
-                ui.input_file(
-                    "backup_upload",
-                    t("backup_upload_label"),
-                    accept=[".db", ".sqlite", ".sqlite3"],
-                    multiple=False,
+                ui.div(
+                    ui.input_file(
+                        "backup_upload",
+                        t("backup_upload_label"),
+                        accept=[".db", ".sqlite", ".sqlite3"],
+                        multiple=False,
+                        button_label=t("file_browse"),
+                        placeholder=t("file_none"),
+                        width="100%",
+                    ),
+                    class_="backup-file",
                 ),
                 ui.input_action_button(
                     "backup_import", t("backup_import"), class_="btn btn-secondary"
                 ),
                 class_="backup-toolbar",
             ),
-            class_="user-form-card",
+            class_="user-form-card wide",
         ),
         ui.div(ui.output_ui("backups_table"), class_="table-scroll mt-3"),
         class_="tab-pane-content",
