@@ -250,6 +250,16 @@ body {
 .login-subtitle, .login-hint { text-align:center; opacity:.7; }
 .login-card .form-label { margin-top:.7rem; }
 .login-card .btn { margin-top:1rem; }
+/* Every field spans the card's full inner width, like the Sign-in button, so
+   the form is symmetric (Shiny inputs default to a fixed 300px). */
+.login-card .shiny-input-container { width:100% !important; max-width:none; margin-bottom:.9rem; }
+/* Same label -> field spacing for every field, CAPTCHA included. */
+.login-card .shiny-input-container label,
+.login-card .login-captcha-block > .form-label { display:block; margin:0 0 .35rem; }
+.login-card .login-captcha-block .shiny-input-container { margin-bottom:0; }
+@media (max-width: 420px) { .login-page { padding:1rem; } .login-card { padding:1.5rem 1.25rem; } }
+.login-card input.form-control { height:44px; }
+.login-hint { font-size:.85rem; margin:1rem 0 0; line-height:1.7; }
 .login-error { margin-top:1rem; color:#dc2626; text-align:center; font-weight:600; }
 .role-badge, .username-badge { padding:.35rem .65rem; border-radius:999px; font-size:.78rem; margin-inline-end:.45rem; background:var(--surface-2); color:var(--text); }
 .logout-button { border:1px solid var(--border); background:transparent; color:var(--text); border-radius:8px; padding:.4rem .65rem; margin-inline-end:.75rem; }
@@ -343,28 +353,33 @@ body {
 
 
 /* Offline image CAPTCHA on the login form.
-   The PNG is drawn at 2x (460x152) and shown at 230x76 so it stays sharp. */
-.login-captcha-block { margin-top: 0.85rem; }
+   The PNG is drawn at 2x (600x144) and shown at up to 300x72 so it stays sharp. */
+.login-captcha-block { margin-top: 0; }
 .login-captcha-row {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 0.6rem;
+  align-items: stretch;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
 }
+/* Image fills the row; the refresh icon button stretches to the image height. */
 .login-captcha-image {
-  flex: 0 1 230px;
+  flex: 1 1 300px;
   min-width: 0;
-  width: 230px;
+  width: 300px;
   max-width: 100%;
   height: auto;
-  aspect-ratio: 230 / 76;
+  aspect-ratio: 300 / 72;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: #f8fafc;      /* the image is always light; keep it readable in dark themes */
   object-fit: contain;
   user-select: none;
 }
-.login-captcha-refresh { white-space: nowrap; flex: 0 0 auto; min-height: 44px; }
+.login-captcha-refresh {
+  flex: 0 0 56px; width: 56px; margin: 0 !important; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 1.35rem;
+  border-radius: 10px;
+}
 .login-captcha-block input.form-control {
   font-size: 1.25rem;
   letter-spacing: .18em;

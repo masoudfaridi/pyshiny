@@ -20,7 +20,7 @@ CAPTCHA_TTL_SECONDS = 300  # 5 minutes
 
 # Size of the image as it is SHOWN in the browser (CSS pixels). Keep in sync
 # with .login-captcha-image in static/css/styles.css.
-CAPTCHA_WIDTH, CAPTCHA_HEIGHT = 230, 76
+CAPTCHA_WIDTH, CAPTCHA_HEIGHT = 300, 72  # wide: fills the login card's row
 
 # A font file ships with the project so the letters are large and identical on
 # every OS. (Docker "slim" images and Windows have no DejaVu; without a font

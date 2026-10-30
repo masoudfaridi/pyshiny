@@ -75,8 +75,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "login_refresh": "Refresh",
         "login_button": "Sign in",
         "login_hint": (
-            "First run: the superadmin password is in db/initial_superadmin_password.txt "
-            "(see README.md). Change it after signing in."
+            "First run: the superadmin password is in ⁦db/initial_superadmin_password.txt⁩ "
+            "(see ⁦README.md⁩). Change it after signing in."
         ),
         "login_session_limit": (
             "Too many failed attempts in this window. Reload the page to try again."
@@ -333,8 +333,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "login_refresh": "تازه‌سازی",
         "login_button": "ورود",
         "login_hint": (
-            "اجرای اول: رمز سوپر ادمین در فایل db/initial_superadmin_password.txt است "
-            "(README.md را ببینید). پس از ورود آن را تغییر دهید."
+            "اجرای اول: رمز سوپر ادمین در فایل ⁦db/initial_superadmin_password.txt⁩ است "
+            "(⁦README.md⁩ را ببینید). پس از ورود آن را تغییر دهید."
         ),
         "login_session_limit": (
             "تعداد تلاش‌های ناموفق در این صفحه زیاد شد. برای تلاش دوباره صفحه را بارگذاری مجدد کنید."

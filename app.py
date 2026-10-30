@@ -85,7 +85,7 @@ from auth import (
 
 from security import SecurityMiddleware
 from i18n import APP_LANG, DIRECTION, IS_RTL, js_bundle, role_label, t
-from tabs._forms import password_input, text_input
+from tabs._forms import password_input, text_input, with_input_attrs
 from tabs import tab_01, tab_02, tab_03, tab_04, tab_05, tab_06, tab_07, tab_account, tab_users, tab_logs
 
 APP_DIR = Path(__file__).parent
@@ -232,8 +232,16 @@ def login_ui() -> ui.Tag:
                 ui.tags.i(class_="bi bi-shield-lock login-icon"),
                 ui.h2(t("login_title")),
                 ui.p(t("login_subtitle"), class_="login-subtitle"),
-                ui.input_text("login_username", t("username"), placeholder=t("username")),
-                ui.input_password("login_password", t("password"), placeholder=t("password")),
+                ui.input_text(
+                    "login_username", t("username"), placeholder=t("username"),
+                    width="100%", autocomplete="username",
+                ),
+                with_input_attrs(
+                    ui.input_password(
+                        "login_password", t("password"), placeholder=t("password"), width="100%",
+                    ),
+                    autocomplete="current-password",
+                ),
                 ui.div(
                     ui.tags.label(t("login_security_check"), class_="form-label"),
                     ui.output_ui("login_captcha_ui"),
@@ -241,6 +249,9 @@ def login_ui() -> ui.Tag:
                         "login_captcha",
                         None,
                         placeholder=t("login_captcha_placeholder"),
+                        width="100%",
+                        autocomplete="off",
+                        spellcheck="false",
                     ),
                     class_="login-captcha-block",
                 ),
@@ -635,10 +646,11 @@ def server(input, output, session):
             ),
             ui.tags.button(
                 ui.tags.i(class_="bi bi-arrow-clockwise"),
-                " " + t("login_refresh"),
                 type="button",
                 id="captcha_refresh_btn",
-                class_="btn btn-sm btn-outline-secondary login-captcha-refresh",
+                title=t("login_refresh"),
+                aria_label=t("login_refresh"),
+                class_="btn btn-outline-secondary login-captcha-refresh",
             ),
             class_="login-captcha-row",
         )
